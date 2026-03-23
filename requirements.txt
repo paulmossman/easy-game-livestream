@@ -1,0 +1,5 @@
+Flask==2.3.3
+Flask-SocketIO==5.3.6
+ffmpeg-python==0.2.0
+python-socketio[eventlet]==5.8.0
+pyzmq==25.1.1

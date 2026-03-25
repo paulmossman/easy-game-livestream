@@ -1,7 +1,0 @@
-services:
-  mediamtx:
-    image: bluenviron/mediamtx:latest
-    ports:
-      - "1936:1935"   # RTMP
-      - "8888:8888"   # HLS
-      - "8889:8889"   # WebRTC (optional)

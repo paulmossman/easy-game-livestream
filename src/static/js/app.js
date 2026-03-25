@@ -1,5 +1,18 @@
 const socket = io();
 
+function previewUrl() {
+    return `${window.location.protocol}//${window.location.hostname}:8889/live/preview/`;
+}
+
+function initializePreviewFrame() {
+    const previewFrame = document.getElementById('preview-frame');
+    if (!previewFrame) {
+        return;
+    }
+
+    previewFrame.src = previewUrl();
+}
+
 function teamDisplay(teamName, score, ppEnabled, enEnabled, isRightSide) {
     const safeTeamName = teamName || (isRightSide ? 'Right Team' : 'Left Team');
     const safeScore = score || '0';
@@ -183,4 +196,5 @@ document.addEventListener('keydown', handleGlobalKeypress);
 
 socket.on('state_updated', renderState);
 
+initializePreviewFrame();
 loadInitialState();

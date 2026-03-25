@@ -35,6 +35,7 @@ state = {
     'running': False,
 }
 ffmpeg_process = None
+relay_ffmpeg_process = None
 process_lock = threading.Lock()
 publish_start_generation = 0
 ffmpeg_ready = False
@@ -60,15 +61,23 @@ def cleanup_ffmpeg():
 def is_ffmpeg_running():
     return ffmpeg_process is not None and ffmpeg_process.poll() is None
 
-def stop_ffmpeg():
-    global ffmpeg_process
-    if ffmpeg_process:
-        ffmpeg_process.terminate()
+def is_relay_ffmpeg_running():
+    return relay_ffmpeg_process is not None and relay_ffmpeg_process.poll() is None
+
+def stop_process(process):
+    if process:
+        process.terminate()
         try:
-            ffmpeg_process.wait(timeout=5)
+            process.wait(timeout=5)
         except subprocess.TimeoutExpired:
-            ffmpeg_process.kill()
-        ffmpeg_process = None
+            process.kill()
+
+def stop_ffmpeg():
+    global ffmpeg_process, relay_ffmpeg_process
+    stop_process(relay_ffmpeg_process)
+    relay_ffmpeg_process = None
+    stop_process(ffmpeg_process)
+    ffmpeg_process = None
 
 def watch_ffmpeg(process):
     global ffmpeg_process, ffmpeg_ready
@@ -84,6 +93,18 @@ def watch_ffmpeg(process):
         if ffmpeg_process is process:
             print(f"FFmpeg exited with code {return_code}", flush=True)
             cleanup_ffmpeg()
+
+def watch_relay_ffmpeg(process):
+    global relay_ffmpeg_process
+    for line in process.stderr:
+        if not any(keyword in line for keyword in ["frame=", "fps=", "size=", "time=", "bitrate=", "speed="]):
+            print("Relay FFmpeg stderr:", line.strip(), flush=True)
+
+    return_code = process.wait()
+    with process_lock:
+        if relay_ffmpeg_process is process:
+            print(f"Relay FFmpeg exited with code {return_code}", flush=True)
+            relay_ffmpeg_process = None
 
 def current_overlay_text():
     home_flags = ' '.join(flag for flag, enabled in [('PP', state['home_pp']), ('EN', state['home_en'])] if enabled)
@@ -182,6 +203,25 @@ def tick_game_clock():
 def current_input_url():
     return f"{config.get('rtmp_input_url', 'rtmp://mediamtx/live')}/{config.get('stream_name', 'stream')}"
 
+def build_rtmp_url(base_url, stream_key):
+    if not stream_key:
+        return base_url
+    if base_url.endswith('/'):
+        return f"{base_url}{stream_key}"
+    return f"{base_url}/{stream_key}"
+
+def current_preview_output_url():
+    output_base = config.get('preview_output_url') or config.get('output_url') or 'rtmp://mediamtx/live/'
+    output_key = config.get('preview_stream_key') or config.get('output_stream_key') or 'preview'
+    return build_rtmp_url(output_base, output_key)
+
+def current_upstream_output_url():
+    output_base = config.get('youtube_output_url') or ''
+    output_key = os.getenv('YOUTUBE_STREAM_KEY') or config.get('youtube_stream_key') or ''
+    if not output_base:
+        return ''
+    return build_rtmp_url(output_base, output_key)
+
 def current_stream_path():
     parsed = urllib.parse.urlparse(current_input_url())
     path = parsed.path.strip('/')
@@ -215,12 +255,40 @@ def is_stream_ready():
         last_stream_ready_state = False
     return False
 
+def start_relay_ffmpeg():
+    global relay_ffmpeg_process
+    upstream_url = current_upstream_output_url()
+    if not upstream_url:
+        return
+    if is_relay_ffmpeg_running():
+        return
+
+    input_url = current_preview_output_url()
+    try:
+        relay_cmd = [
+            'ffmpeg',
+            '-rtmp_live', 'live',
+            '-i', input_url,
+            '-c', 'copy',
+            '-f', 'flv',
+            upstream_url,
+        ]
+        print("Starting relay FFmpeg:", ' '.join(relay_cmd), flush=True)
+        relay_ffmpeg_process = subprocess.Popen(
+            relay_cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        threading.Thread(target=watch_relay_ffmpeg, args=(relay_ffmpeg_process,), daemon=True).start()
+    except Exception as e:
+        print(f"Error starting relay FFmpeg: {e}", flush=True)
+        relay_ffmpeg_process = None
+
 def run_ffmpeg():
     global ffmpeg_process, ffmpeg_ready
-    youtube_key = os.getenv('YOUTUBE_STREAM_KEY') or config.get('youtube_stream_key') or ''
     input_url = current_input_url()
-    output_base = config.get('youtube_output_url', 'rtmp://a.rtmp.youtube.com/live2/')
-    output_url = f"{output_base}{youtube_key}" if youtube_key else output_base
+    output_url = current_preview_output_url()
     
     try:
         stop_ffmpeg()
@@ -272,7 +340,21 @@ def run_ffmpeg():
         )
         audio = stream.audio.filter(audio_control_target, volume=current_volume_level())
         
-        out = ffmpeg.output(video, audio, output_url, f='flv', vcodec='libx264', acodec='aac')
+        out = ffmpeg.output(
+            video,
+            audio,
+            output_url,
+            f='flv',
+            vcodec='libx264',
+            acodec='aac',
+            preset='veryfast',
+            tune='zerolatency',
+            pix_fmt='yuv420p',
+            g=30,
+            keyint_min=30,
+            sc_threshold=0,
+            bf=0,
+        )
         cmd = ['ffmpeg'] + ffmpeg.get_args(out)
         print("Starting ffmpeg:", ' '.join(cmd), flush=True)
         ffmpeg_process = subprocess.Popen(
@@ -290,6 +372,7 @@ def run_ffmpeg():
             return
 
         threading.Thread(target=watch_ffmpeg, args=(ffmpeg_process,), daemon=True).start()
+        start_relay_ffmpeg()
     except Exception as e:
         print(f"Error starting ffmpeg: {e}", flush=True)
         cleanup_ffmpeg()

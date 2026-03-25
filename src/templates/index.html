@@ -88,6 +88,10 @@
             align-content: start;
         }
 
+        .preview-panel {
+            gap: 16px;
+        }
+
         .settings-panel {
             grid-area: settings;
             padding: 24px;
@@ -157,6 +161,47 @@
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 16px;
+        }
+
+        .preview-header {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 12px;
+        }
+
+        .preview-title {
+            margin: 0;
+            font-size: 1.15rem;
+            font-weight: 900;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }
+
+        .preview-subtitle {
+            font-size: 0.92rem;
+            font-weight: 700;
+            color: rgba(31, 26, 23, 0.7);
+        }
+
+        .preview-frame {
+            width: 100%;
+            aspect-ratio: 16 / 9;
+            border: 1px solid var(--line);
+            border-radius: 22px;
+            background: #12181d;
+        }
+
+        .visually-hidden {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
         }
 
         .meta {
@@ -329,17 +374,21 @@
                 <button type="button" id="away-plus" class="plus-button">+</button>
             </section>
 
-            <section class="panel shared-panel">
-                <div class="shared-grid">
-                    <div class="meta">
-                        <div class="meta-label">Time</div>
-                        <div id="time-display" class="meta-value">20:00</div>
-                    </div>
-                    <div class="meta">
-                        <div class="meta-label">Audio</div>
-                        <div id="audio-state" class="meta-value">Muted</div>
-                        <div id="status-text" class="status-line">Stopped</div>
-                    </div>
+            <section class="panel shared-panel preview-panel">
+                <div class="preview-header">
+                    <h3 class="preview-title">Preview</h3>
+                    <div class="preview-subtitle">Low-latency WebRTC program feed</div>
+                </div>
+                <iframe
+                    id="preview-frame"
+                    class="preview-frame"
+                    title="Live preview"
+                    allow="autoplay; fullscreen; picture-in-picture"
+                ></iframe>
+                <div class="visually-hidden" aria-hidden="true">
+                    <div id="time-display" class="meta-value">20:00</div>
+                    <div id="audio-state" class="meta-value">Muted</div>
+                    <div id="status-text" class="status-line">Stopped</div>
                 </div>
             </section>
 

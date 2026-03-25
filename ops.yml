@@ -2,3 +2,5 @@
 actions:
   start: docker compose up -d
   stop: docker compose down
+  restart: docker compose restart
+  restart-app: docker compose restart app

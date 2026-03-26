@@ -1,6 +1,7 @@
 import os
 import subprocess
 import json
+import re
 import threading
 import time
 import urllib.error
@@ -9,7 +10,6 @@ import urllib.request
 from urllib.parse import parse_qs
 from flask import Flask, render_template, request, jsonify
 from flask_socketio import SocketIO, emit
-import ffmpeg
 
 # Load config
 config_path = '/app/config/config.json'
@@ -30,9 +30,12 @@ state = {
     'away_en': False,
     'period': 'Period 1',
     'time': '20:00',
-    'mute': True,
+    'mute': False,
     'mute_on_stop': True,
     'running': False,
+    'incoming_audio_db': None,
+    'incoming_audio_label': 'Waiting for stream',
+    'incoming_audio_active': False,
 }
 ffmpeg_process = None
 relay_ffmpeg_process = None
@@ -52,6 +55,8 @@ mediamtx_api_url = config.get('mediamtx_api_url', 'http://mediamtx:9997/v3/paths
 last_stream_ready_state = None
 audio_control_target = 'volume@audio_gain'
 state_lock = threading.Lock()
+incoming_audio_monitor_interval_seconds = float(config.get('incoming_audio_monitor_interval_seconds', 4.0))
+volume_pattern = re.compile(r'max_volume:\s*(-?\d+(?:\.\d+)?)\s*dB')
 
 def cleanup_ffmpeg():
     global ffmpeg_process, ffmpeg_ready
@@ -212,7 +217,12 @@ def build_rtmp_url(base_url, stream_key):
 
 def current_preview_output_url():
     output_base = config.get('preview_output_url') or config.get('output_url') or 'rtmp://mediamtx/live/'
-    output_key = config.get('preview_stream_key') or config.get('output_stream_key') or 'preview'
+    output_key = config.get('preview_stream_key') or config.get('output_stream_key') or 'preview_hls'
+    return build_rtmp_url(output_base, output_key)
+
+def current_webrtc_preview_output_url():
+    output_base = config.get('webrtc_preview_output_url') or 'rtsp://mediamtx:8554/live/'
+    output_key = config.get('webrtc_preview_stream_key') or 'preview'
     return build_rtmp_url(output_base, output_key)
 
 def current_upstream_output_url():
@@ -221,6 +231,63 @@ def current_upstream_output_url():
     if not output_base:
         return ''
     return build_rtmp_url(output_base, output_key)
+
+def measure_input_audio_level():
+    cmd = [
+        'ffmpeg',
+        '-nostats',
+        '-t', '2',
+        '-i', current_input_url(),
+        '-af', 'volumedetect',
+        '-vn',
+        '-sn',
+        '-dn',
+        '-f', 'null',
+        '-',
+    ]
+    try:
+        result = subprocess.run(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=6,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return None
+
+    match = volume_pattern.search(result.stderr or '')
+    if not match:
+        return None
+    try:
+        return float(match.group(1))
+    except ValueError:
+        return None
+
+def audio_level_status(audio_db):
+    if audio_db is None:
+        return ('Waiting for stream', False)
+    if audio_db <= -80:
+        return (f'Silent ({audio_db:.0f} dB)', False)
+    return (f'Active ({audio_db:.0f} dB)', True)
+
+def monitor_input_audio():
+    last_snapshot = (None, None, None)
+    while True:
+        ready = is_stream_ready()
+        audio_db = measure_input_audio_level() if ready else None
+        label, is_active = audio_level_status(audio_db)
+        snapshot = (audio_db, label, is_active)
+        if snapshot != last_snapshot:
+            with state_lock:
+                state['incoming_audio_db'] = audio_db
+                state['incoming_audio_label'] = label
+                state['incoming_audio_active'] = is_active
+                updated_state = dict(state)
+            socketio.emit('state_updated', updated_state)
+            last_snapshot = snapshot
+        time.sleep(incoming_audio_monitor_interval_seconds)
 
 def current_stream_path():
     parsed = urllib.parse.urlparse(current_input_url())
@@ -288,74 +355,55 @@ def start_relay_ffmpeg():
 def run_ffmpeg():
     global ffmpeg_process, ffmpeg_ready
     input_url = current_input_url()
-    output_url = current_preview_output_url()
+    preview_output_url = current_preview_output_url()
+    webrtc_output_url = current_webrtc_preview_output_url()
     
     try:
         stop_ffmpeg()
         ffmpeg_ready = False
         write_overlay_text()
-        stream = ffmpeg.input(input_url, rtmp_live='live')
-        video = (
-            stream.video
-            .filter(
-                'drawtext',
-                textfile=overlay_paths['home'],
-                reload=1,
-                fontsize=50,
-                fontcolor='white',
-                x=10,
-                y=10,
-                box=0,
-            )
-            .filter(
-                'drawtext',
-                textfile=overlay_paths['away'],
-                reload=1,
-                fontsize=50,
-                fontcolor='white',
-                x='w-tw-10',
-                y=10,
-                box=0,
-            )
-            .filter(
-                'drawtext',
-                textfile=overlay_paths['time'],
-                reload=1,
-                fontsize=56,
-                fontcolor='white',
-                x='(w-tw)/2',
-                y=10,
-                box=0,
-            )
-            .filter(
-                'drawtext',
-                textfile=overlay_paths['period'],
-                reload=1,
-                fontsize=42,
-                fontcolor='white',
-                x=10,
-                y='h-th-(h*0.05)',
-                box=0,
-            )
-        )
-        audio = stream.audio.filter(audio_control_target, volume=current_volume_level())
-        
-        out = ffmpeg.output(
-            video,
-            audio,
-            output_url,
-            f='flv',
-            vcodec='libx264',
-            acodec='aac',
-            preset='veryfast',
-            tune='zerolatency',
-            pix_fmt='yuv420p',
-            g=30,
-            keyint_min=30,
-            sc_threshold=0,
-            bf=0,
-        )
-        cmd = ['ffmpeg'] + ffmpeg.get_args(out)
+        filter_complex = ';'.join([
+            '[0:v]drawtext=box=0:fontcolor=white:fontsize=50:reload=1:textfile=/tmp/overlay-home.txt:x=10:y=10[v0]',
+            '[v0]drawtext=box=0:fontcolor=white:fontsize=50:reload=1:textfile=/tmp/overlay-away.txt:x=w-tw-10:y=10[v1]',
+            '[v1]drawtext=box=0:fontcolor=white:fontsize=56:reload=1:textfile=/tmp/overlay-time.txt:x=(w-tw)/2:y=10[v2]',
+            '[v2]drawtext=box=0:fontcolor=white:fontsize=42:reload=1:textfile=/tmp/overlay-period.txt:x=10:y=h-th-(h*0.05),split=2[v_preview][v_webrtc]',
+            f'[0:a]{audio_control_target}=volume={current_volume_level()},asplit=2[a_preview][a_webrtc]',
+        ])
+        cmd = [
+            'ffmpeg',
+            '-rtmp_live', 'live',
+            '-i', input_url,
+            '-filter_complex', filter_complex,
+            '-map', '[v_preview]',
+            '-map', '[a_preview]',
+            '-c:v', 'libx264',
+            '-pix_fmt', 'yuv420p',
+            '-preset', 'veryfast',
+            '-tune', 'zerolatency',
+            '-g', '30',
+            '-keyint_min', '30',
+            '-sc_threshold', '0',
+            '-bf', '0',
+            '-c:a', 'aac',
+            '-f', 'flv',
+            preview_output_url,
+            '-map', '[v_webrtc]',
+            '-map', '[a_webrtc]',
+            '-c:v', 'libx264',
+            '-pix_fmt', 'yuv420p',
+            '-preset', 'veryfast',
+            '-tune', 'zerolatency',
+            '-g', '30',
+            '-keyint_min', '30',
+            '-sc_threshold', '0',
+            '-bf', '0',
+            '-c:a', 'libopus',
+            '-b:a', '96k',
+            '-application', 'lowdelay',
+            '-f', 'rtsp',
+            '-rtsp_transport', 'tcp',
+            webrtc_output_url,
+        ]
         print("Starting ffmpeg:", ' '.join(cmd), flush=True)
         ffmpeg_process = subprocess.Popen(
             cmd,
@@ -480,4 +528,5 @@ def handle_update_overlay(data):
 if __name__ == '__main__':
     threading.Thread(target=monitor_stream, daemon=True).start()
     threading.Thread(target=tick_game_clock, daemon=True).start()
+    threading.Thread(target=monitor_input_audio, daemon=True).start()
     socketio.run(app, host='0.0.0.0', port=5000, allow_unsafe_werkzeug=True)

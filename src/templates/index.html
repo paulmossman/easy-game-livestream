@@ -100,6 +100,62 @@
             align-content: start;
         }
 
+        .audio-panel {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            align-items: center;
+            gap: 16px;
+            padding: 18px 20px;
+            border-radius: 20px;
+            background: rgba(31, 26, 23, 0.05);
+        }
+
+        .audio-copy {
+            display: grid;
+            gap: 6px;
+        }
+
+        .audio-label {
+            font-size: 0.82rem;
+            font-weight: 800;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: rgba(31, 26, 23, 0.7);
+        }
+
+        .audio-value {
+            font-size: 1.2rem;
+            font-weight: 900;
+        }
+
+        .input-audio-panel {
+            display: grid;
+            gap: 12px;
+            padding: 18px 20px;
+            border-radius: 20px;
+            background: rgba(31, 26, 23, 0.05);
+        }
+
+        .meter-track {
+            width: 100%;
+            height: 14px;
+            overflow: hidden;
+            border-radius: 999px;
+            background: rgba(31, 26, 23, 0.12);
+        }
+
+        .meter-fill {
+            width: 0%;
+            height: 100%;
+            border-radius: inherit;
+            background: linear-gradient(90deg, var(--red-a), #e0a834, var(--green-a));
+            transition: width 160ms ease;
+        }
+
+        .meter-fill.is-silent {
+            width: 2%;
+        }
+
         .toggle-panel {
             grid-area: toggle;
             overflow: hidden;
@@ -190,6 +246,13 @@
             border: 1px solid var(--line);
             border-radius: 22px;
             background: #12181d;
+        }
+
+        .preview-status {
+            min-height: 1.2rem;
+            font-size: 0.92rem;
+            font-weight: 700;
+            color: rgba(31, 26, 23, 0.7);
         }
 
         .visually-hidden {
@@ -377,7 +440,7 @@
             <section class="panel shared-panel preview-panel">
                 <div class="preview-header">
                     <h3 class="preview-title">Preview</h3>
-                    <div class="preview-subtitle">Low-latency WebRTC program feed</div>
+                    <div class="preview-subtitle">Low-latency WebRTC preview</div>
                 </div>
                 <iframe
                     id="preview-frame"
@@ -385,10 +448,9 @@
                     title="Live preview"
                     allow="autoplay; fullscreen; picture-in-picture"
                 ></iframe>
+                <div id="preview-status" class="preview-status">Loading WebRTC preview...</div>
                 <div class="visually-hidden" aria-hidden="true">
                     <div id="time-display" class="meta-value">20:00</div>
-                    <div id="audio-state" class="meta-value">Muted</div>
-                    <div id="status-text" class="status-line">Stopped</div>
                 </div>
             </section>
 
@@ -416,7 +478,23 @@
                     <input type="checkbox" id="mute-on-stop" checked>
                     <span>Mute on Stop</span>
                 </label>
-                <button type="button" id="mute-toggle-button" class="mute-button is-hidden">Un-mute</button>
+                <div class="input-audio-panel">
+                    <div class="audio-copy">
+                        <div class="audio-label">Incoming RTMP Audio</div>
+                        <div id="incoming-audio-label" class="audio-value">Waiting for stream</div>
+                    </div>
+                    <div class="meter-track" aria-hidden="true">
+                        <div id="incoming-audio-meter" class="meter-fill is-silent"></div>
+                    </div>
+                </div>
+                <div class="audio-panel">
+                    <div class="audio-copy">
+                        <div class="audio-label">Program Audio</div>
+                        <div id="audio-state" class="audio-value">Muted</div>
+                        <div id="status-text" class="status-line">Stopped</div>
+                    </div>
+                    <button type="button" id="mute-toggle-button" class="mute-button is-hidden">Un-mute</button>
+                </div>
                 <button type="submit" class="save-button">Update Scoreboard</button>
                 <div class="settings-grid">
                     <label>
@@ -435,6 +513,6 @@
             </section>
         </form>
     </div>
-    <script src="/static/js/app.js"></script>
+    <script src="/static/js/app.js?v=20260325a"></script>
 </body>
 </html>

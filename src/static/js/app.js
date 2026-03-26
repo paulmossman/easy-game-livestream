@@ -1,16 +1,39 @@
 const socket = io();
 
 function previewUrl() {
-    return `${window.location.protocol}//${window.location.hostname}:8889/live/preview/`;
+    const query = new URLSearchParams({
+        controls: 'yes',
+        muted: 'no',
+        autoplay: 'yes',
+        playsinline: 'yes'
+    });
+    return `${window.location.protocol}//${window.location.hostname}:8889/live/preview/?${query.toString()}`;
 }
 
-function initializePreviewFrame() {
+function setPreviewStatus(message) {
+    const previewStatus = document.getElementById('preview-status');
+    if (previewStatus) {
+        previewStatus.textContent = message;
+    }
+}
+
+function initializePreviewPlayer() {
     const previewFrame = document.getElementById('preview-frame');
     if (!previewFrame) {
         return;
     }
 
     previewFrame.src = previewUrl();
+    setPreviewStatus('Preview ready. If your browser blocks autoplay with sound, click once inside the player.');
+}
+
+function meterWidthFromDb(audioDb) {
+    if (typeof audioDb !== 'number' || Number.isNaN(audioDb)) {
+        return 0;
+    }
+
+    const clamped = Math.max(-80, Math.min(-10, audioDb));
+    return ((clamped + 80) / 70) * 100;
 }
 
 function teamDisplay(teamName, score, ppEnabled, enEnabled, isRightSide) {
@@ -77,6 +100,8 @@ function renderState(state) {
     const toggleButton = document.getElementById('start-stop-button');
     const statusText = document.getElementById('status-text');
     const audioState = document.getElementById('audio-state');
+    const incomingAudioLabel = document.getElementById('incoming-audio-label');
+    const incomingAudioMeter = document.getElementById('incoming-audio-meter');
     const muteOnStop = document.getElementById('mute-on-stop');
     const muteToggleButton = document.getElementById('mute-toggle-button');
     const isRunning = Boolean(state.running);
@@ -86,6 +111,9 @@ function renderState(state) {
     toggleButton.classList.toggle('stopped', !isRunning);
     statusText.textContent = isRunning ? 'Running' : 'Stopped';
     audioState.textContent = state.mute ? 'Muted' : 'Un-muted';
+    incomingAudioLabel.textContent = state.incoming_audio_label || 'Waiting for stream';
+    incomingAudioMeter.style.width = `${meterWidthFromDb(state.incoming_audio_db)}%`;
+    incomingAudioMeter.classList.toggle('is-silent', !state.incoming_audio_active);
     muteToggleButton.textContent = state.mute ? 'Un-mute' : 'Mute';
     muteToggleButton.classList.toggle('is-hidden', Boolean(state.mute_on_stop));
 }
@@ -196,5 +224,5 @@ document.addEventListener('keydown', handleGlobalKeypress);
 
 socket.on('state_updated', renderState);
 
-initializePreviewFrame();
+initializePreviewPlayer();
 loadInitialState();

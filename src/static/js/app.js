@@ -4,18 +4,16 @@ let youtubeChannels = [];
 function previewUrl() {
     const query = new URLSearchParams({
         controls: 'yes',
-        muted: 'no',
+        muted: 'yes',
         autoplay: 'yes',
         playsinline: 'yes'
     });
     return `${window.location.protocol}//${window.location.hostname}:8889/live/preview/?${query.toString()}`;
 }
 
-function setPreviewStatus(message) {
-    const previewStatus = document.getElementById('preview-status');
-    if (previewStatus) {
-        previewStatus.textContent = message;
-    }
+function setPreviewVisibility(showVideo) {
+    document.getElementById('preview-frame').classList.toggle('is-hidden', !showVideo);
+    document.getElementById('overlay-mockup').classList.toggle('is-hidden', showVideo);
 }
 
 function initializePreviewPlayer() {
@@ -25,7 +23,7 @@ function initializePreviewPlayer() {
     }
 
     previewFrame.src = previewUrl();
-    setPreviewStatus('Preview ready. If your browser blocks autoplay with sound, click once inside the player.');
+    setPreviewVisibility(document.getElementById('show-video').checked);
 }
 
 function setYoutubeStatus(title, detail) {
@@ -228,32 +226,67 @@ function currentFormData() {
     };
 }
 
+function syncInputValue(id, value) {
+    const element = document.getElementById(id);
+    if (document.activeElement === element) {
+        return;
+    }
+
+    element.value = value;
+}
+
+function updateOverlayMockup(state) {
+    document.getElementById('overlay-home').textContent = teamDisplay(
+        document.getElementById('home-team').value,
+        document.getElementById('home-score').value,
+        state.home_pp,
+        state.home_en,
+        false
+    );
+    document.getElementById('overlay-away').textContent = teamDisplay(
+        document.getElementById('away-team').value,
+        document.getElementById('away-score').value,
+        state.away_pp,
+        state.away_en,
+        true
+    );
+    document.getElementById('overlay-time').textContent = state.time;
+    document.getElementById('overlay-period').textContent = state.period;
+    const isMuted = typeof state.mute === 'boolean'
+        ? state.mute
+        : document.getElementById('audio-state').textContent === 'Muted';
+    document.getElementById('overlay-muted').classList.toggle('is-hidden', !isMuted);
+}
+
 function renderState(state) {
-    document.getElementById('home-team').value = state.home_team;
-    document.getElementById('home-score').value = state.home_score;
+    syncInputValue('home-team', state.home_team);
+    syncInputValue('home-score', state.home_score);
     document.getElementById('home-pp').checked = Boolean(state.home_pp);
     document.getElementById('home-en').checked = Boolean(state.home_en);
-    document.getElementById('away-team').value = state.away_team;
-    document.getElementById('away-score').value = state.away_score;
+    syncInputValue('away-team', state.away_team);
+    syncInputValue('away-score', state.away_score);
     document.getElementById('away-pp').checked = Boolean(state.away_pp);
     document.getElementById('away-en').checked = Boolean(state.away_en);
-    document.getElementById('period').value = state.period;
-    document.getElementById('time').value = state.time;
+    if (document.activeElement !== document.getElementById('period')) {
+        document.getElementById('period').value = state.period;
+    }
+    syncInputValue('time', state.time);
     document.getElementById('time-display').textContent = state.time;
     document.getElementById('home-team-heading').textContent = teamDisplay(
-        state.home_team,
-        state.home_score,
+        document.getElementById('home-team').value,
+        document.getElementById('home-score').value,
         state.home_pp,
         state.home_en,
         false
     );
     document.getElementById('away-team-heading').textContent = teamDisplay(
-        state.away_team,
-        state.away_score,
+        document.getElementById('away-team').value,
+        document.getElementById('away-score').value,
         state.away_pp,
         state.away_en,
         true
     );
+    updateOverlayMockup(state);
 
     const toggleButton = document.getElementById('start-stop-button');
     const statusText = document.getElementById('status-text');
@@ -360,6 +393,14 @@ function refreshTeamHeadingsFromInputs() {
         document.getElementById('away-en').checked,
         true
     );
+    updateOverlayMockup({
+        home_pp: document.getElementById('home-pp').checked,
+        home_en: document.getElementById('home-en').checked,
+        away_pp: document.getElementById('away-pp').checked,
+        away_en: document.getElementById('away-en').checked,
+        period: document.getElementById('period').value,
+        time: document.getElementById('time').value
+    });
 }
 
 document.getElementById('overlay-form').addEventListener('submit', submitOverlayUpdate);
@@ -372,6 +413,8 @@ document.getElementById('away-pp').addEventListener('change', submitOverlayUpdat
 document.getElementById('away-en').addEventListener('change', submitOverlayUpdate);
 document.getElementById('home-team').addEventListener('blur', submitOverlayUpdate);
 document.getElementById('away-team').addEventListener('blur', submitOverlayUpdate);
+document.getElementById('home-score').addEventListener('blur', submitOverlayUpdate);
+document.getElementById('away-score').addEventListener('blur', submitOverlayUpdate);
 document.getElementById('period').addEventListener('change', submitOverlayUpdate);
 document.getElementById('time').addEventListener('blur', submitOverlayUpdate);
 document.getElementById('home-score').addEventListener('input', refreshTeamHeadingsFromInputs);
@@ -380,11 +423,14 @@ document.getElementById('home-pp').addEventListener('change', refreshTeamHeading
 document.getElementById('home-en').addEventListener('change', refreshTeamHeadingsFromInputs);
 document.getElementById('away-pp').addEventListener('change', refreshTeamHeadingsFromInputs);
 document.getElementById('away-en').addEventListener('change', refreshTeamHeadingsFromInputs);
+document.getElementById('period').addEventListener('change', refreshTeamHeadingsFromInputs);
+document.getElementById('time').addEventListener('input', refreshTeamHeadingsFromInputs);
 document.getElementById('mute-on-stop').addEventListener('change', submitOverlayUpdate);
 document.getElementById('mute-toggle-button').addEventListener('click', toggleMute);
 document.getElementById('create-stream-button').addEventListener('click', handleCreateStreamClick);
 document.getElementById('home-team').addEventListener('input', refreshTeamHeadingsFromInputs);
 document.getElementById('away-team').addEventListener('input', refreshTeamHeadingsFromInputs);
+document.getElementById('show-video').addEventListener('change', (event) => setPreviewVisibility(event.target.checked));
 document.addEventListener('keydown', handleGlobalKeypress);
 window.addEventListener('message', (event) => {
     if (event.origin !== window.location.origin) {

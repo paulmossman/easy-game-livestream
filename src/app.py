@@ -55,6 +55,7 @@ overlay_paths = {
     'away': '/tmp/overlay-away.txt',
     'period': '/tmp/overlay-period.txt',
     'time': '/tmp/overlay-time.txt',
+    'mute': '/tmp/overlay-mute.txt',
 }
 muted_volume_level = '0.001'
 normal_volume_level = '1.0'
@@ -150,6 +151,7 @@ def current_overlay_text():
         'away': away_display,
         'period': state['period'],
         'time': state['time'],
+        'mute': 'MUTED' if state['mute'] else '',
     }
 
 def normalize_score_value(value):
@@ -576,7 +578,9 @@ def run_ffmpeg():
             '[0:v]drawtext=box=0:fontcolor=white:fontsize=50:reload=1:textfile=/tmp/overlay-home.txt:x=10:y=10[v0]',
             '[v0]drawtext=box=0:fontcolor=white:fontsize=50:reload=1:textfile=/tmp/overlay-away.txt:x=w-tw-10:y=10[v1]',
             '[v1]drawtext=box=0:fontcolor=white:fontsize=56:reload=1:textfile=/tmp/overlay-time.txt:x=(w-tw)/2:y=10[v2]',
-            '[v2]drawtext=box=0:fontcolor=white:fontsize=42:reload=1:textfile=/tmp/overlay-period.txt:x=10:y=h-th-(h*0.05),split=2[v_preview][v_webrtc]',
+            '[v2]drawtext=box=0:fontcolor=white:fontsize=42:reload=1:textfile=/tmp/overlay-period.txt:x=10:y=h-th-(h*0.05)[v3]',
+            '[v3]drawtext=box=1:boxcolor=black@0.12:boxborderw=28:fontcolor=white@0.42:fontsize=92:reload=1:textfile=/tmp/overlay-mute.txt:x=(w-tw)/2:y=(h-th)/2[v4]',
+            '[v4]split=2[v_preview][v_webrtc]',
             f'[0:a]{audio_control_target}=volume={current_volume_level()},asplit=2[a_preview][a_webrtc]',
         ])
         cmd = [

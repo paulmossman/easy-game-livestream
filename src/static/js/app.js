@@ -1,4 +1,5 @@
 const socket = io();
+let youtubeChannels = [];
 
 function previewUrl() {
     const query = new URLSearchParams({
@@ -25,6 +26,163 @@ function initializePreviewPlayer() {
 
     previewFrame.src = previewUrl();
     setPreviewStatus('Preview ready. If your browser blocks autoplay with sound, click once inside the player.');
+}
+
+function setYoutubeStatus(title, detail) {
+    document.getElementById('youtube-status').textContent = title;
+    document.getElementById('youtube-detail').textContent = detail;
+}
+
+function setCreateStreamAvailability(enabled, label) {
+    const button = document.getElementById('create-stream-button');
+    button.disabled = !enabled;
+    button.textContent = label;
+    button.classList.toggle('is-disabled', !enabled);
+}
+
+function renderYouTubeChannels(channels) {
+    const container = document.getElementById('youtube-channel-list');
+    container.innerHTML = '';
+
+    channels.forEach((channel) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'channel-button';
+        button.textContent = `Use ${channel.title}`;
+        button.addEventListener('click', () => createYouTubeStream(channel.id));
+        container.appendChild(button);
+    });
+}
+
+async function maybeAutoCreateYouTubeStream() {
+    if (youtubeChannels.length !== 1) {
+        return false;
+    }
+
+    await createYouTubeStream(youtubeChannels[0].id);
+    return true;
+}
+
+function renderYouTubeBroadcastLink(data) {
+    const link = document.getElementById('youtube-broadcast-link');
+    if (data && data.broadcast_url) {
+        link.href = data.broadcast_url;
+        link.textContent = `Open "${data.broadcast_title || data.title || 'YouTube broadcast'}"`;
+        link.classList.remove('is-hidden');
+        return;
+    }
+
+    link.classList.add('is-hidden');
+}
+
+async function loadYouTubeStatus() {
+    const response = await fetch('/api/youtube/status');
+    if (!response.ok) {
+        setYoutubeStatus('YouTube unavailable', 'Could not load YouTube connection status.');
+        return;
+    }
+
+    const data = await response.json();
+    youtubeChannels = Array.isArray(data.channel_choices) ? data.channel_choices : [];
+    const oauthConfigured = Boolean(data.oauth_configured);
+
+    if (!oauthConfigured) {
+        setCreateStreamAvailability(false, 'Create New Stream Unavailable');
+        setYoutubeStatus('Manual YouTube Studio mode', 'This app can publish with a reusable stream key, but browser-created YouTube streams are disabled until Google OAuth is configured.');
+        renderYouTubeChannels([]);
+        renderYouTubeBroadcastLink(null);
+        return;
+    }
+
+    setCreateStreamAvailability(true, 'Create New Stream');
+
+    if (!data.authorized) {
+        setYoutubeStatus('Not connected', data.authorization_error || 'Sign in to YouTube before creating a stream.');
+        renderYouTubeChannels([]);
+        renderYouTubeBroadcastLink(null);
+        return;
+    }
+
+    if (data.active_destination && data.active_destination.broadcast_url) {
+        youtubeChannels = [];
+        setYoutubeStatus(
+            data.active_destination.channel_title || 'Connected',
+            data.active_destination.broadcast_title || 'Current YouTube broadcast is ready.'
+        );
+        renderYouTubeBroadcastLink(data.active_destination);
+    } else if (youtubeChannels.length > 0) {
+        if (await maybeAutoCreateYouTubeStream()) {
+            renderYouTubeChannels([]);
+            return;
+        }
+
+        setYoutubeStatus('Choose a channel', 'Pick which YouTube channel should receive the new live stream.');
+        renderYouTubeBroadcastLink(null);
+    } else {
+        setYoutubeStatus('Connected', 'No YouTube channels were returned for this login.');
+        renderYouTubeBroadcastLink(null);
+    }
+
+    renderYouTubeChannels(youtubeChannels);
+}
+
+function openYouTubeOAuthPopup() {
+    const width = 640;
+    const height = 720;
+    const left = Math.max(0, Math.round((window.screen.width - width) / 2));
+    const top = Math.max(0, Math.round((window.screen.height - height) / 2));
+    window.open(
+        '/api/youtube/oauth/start',
+        'youtube-oauth',
+        `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes`
+    );
+}
+
+async function handleCreateStreamClick() {
+    const button = document.getElementById('create-stream-button');
+    if (button.disabled) {
+        return;
+    }
+
+    if (youtubeChannels.length === 1) {
+        await createYouTubeStream(youtubeChannels[0].id);
+        return;
+    }
+
+    if (youtubeChannels.length > 0) {
+        setYoutubeStatus('Choose a channel', 'Select which YouTube channel should receive the new stream.');
+        return;
+    }
+
+    setYoutubeStatus('Connecting to YouTube', 'Complete the Google sign-in flow, then pick a channel here.');
+    openYouTubeOAuthPopup();
+}
+
+async function createYouTubeStream(channelId) {
+    setYoutubeStatus('Creating stream', 'Asking YouTube to create a brand-new immediate live broadcast.');
+    const formData = currentFormData();
+    const response = await fetch('/api/youtube/create-stream', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            channel_id: channelId,
+            home_team: formData.home_team,
+            away_team: formData.away_team
+        })
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+        setYoutubeStatus('Create failed', data.error || 'YouTube did not accept the request.');
+        return;
+    }
+
+    youtubeChannels = [];
+    renderYouTubeChannels([]);
+    renderYouTubeBroadcastLink(data);
+    setYoutubeStatus(data.channel_title || 'YouTube ready', data.title || 'Broadcast created.');
 }
 
 function meterWidthFromDb(audioDb) {
@@ -133,7 +291,9 @@ async function postState(data) {
 }
 
 async function submitOverlayUpdate(event) {
-    event.preventDefault();
+    if (event) {
+        event.preventDefault();
+    }
     await postState(currentFormData());
 }
 
@@ -210,6 +370,10 @@ document.getElementById('home-pp').addEventListener('change', submitOverlayUpdat
 document.getElementById('home-en').addEventListener('change', submitOverlayUpdate);
 document.getElementById('away-pp').addEventListener('change', submitOverlayUpdate);
 document.getElementById('away-en').addEventListener('change', submitOverlayUpdate);
+document.getElementById('home-team').addEventListener('blur', submitOverlayUpdate);
+document.getElementById('away-team').addEventListener('blur', submitOverlayUpdate);
+document.getElementById('period').addEventListener('change', submitOverlayUpdate);
+document.getElementById('time').addEventListener('blur', submitOverlayUpdate);
 document.getElementById('home-score').addEventListener('input', refreshTeamHeadingsFromInputs);
 document.getElementById('away-score').addEventListener('input', refreshTeamHeadingsFromInputs);
 document.getElementById('home-pp').addEventListener('change', refreshTeamHeadingsFromInputs);
@@ -218,11 +382,21 @@ document.getElementById('away-pp').addEventListener('change', refreshTeamHeading
 document.getElementById('away-en').addEventListener('change', refreshTeamHeadingsFromInputs);
 document.getElementById('mute-on-stop').addEventListener('change', submitOverlayUpdate);
 document.getElementById('mute-toggle-button').addEventListener('click', toggleMute);
+document.getElementById('create-stream-button').addEventListener('click', handleCreateStreamClick);
 document.getElementById('home-team').addEventListener('input', refreshTeamHeadingsFromInputs);
 document.getElementById('away-team').addEventListener('input', refreshTeamHeadingsFromInputs);
 document.addEventListener('keydown', handleGlobalKeypress);
+window.addEventListener('message', (event) => {
+    if (event.origin !== window.location.origin) {
+        return;
+    }
+    if (event.data && event.data.type === 'youtube-oauth-complete') {
+        loadYouTubeStatus();
+    }
+});
 
 socket.on('state_updated', renderState);
 
 initializePreviewPlayer();
 loadInitialState();
+loadYouTubeStatus();

@@ -110,6 +110,59 @@
             background: rgba(31, 26, 23, 0.05);
         }
 
+        .youtube-panel {
+            display: grid;
+            gap: 14px;
+            padding: 18px 20px;
+            border-radius: 20px;
+            background: rgba(31, 26, 23, 0.05);
+        }
+
+        .youtube-actions {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .youtube-button,
+        .channel-button {
+            border: 0;
+            border-radius: 16px;
+            cursor: pointer;
+            font-size: 0.98rem;
+            font-weight: 800;
+        }
+
+        .youtube-button {
+            padding: 14px 18px;
+            color: white;
+            background: linear-gradient(160deg, #b84029, #d9643c);
+        }
+
+        .channel-list {
+            display: grid;
+            gap: 10px;
+        }
+
+        .channel-button {
+            width: 100%;
+            padding: 14px 16px;
+            text-align: left;
+            color: var(--ink);
+            background: rgba(255, 255, 255, 0.74);
+            border: 1px solid var(--line);
+        }
+
+        .youtube-link {
+            color: var(--steel-b);
+            font-weight: 800;
+            text-decoration: none;
+        }
+
+        .youtube-link:hover {
+            text-decoration: underline;
+        }
+
         .audio-copy {
             display: grid;
             gap: 6px;
@@ -198,8 +251,7 @@
         }
 
         .plus-button,
-        .mute-button,
-        .save-button {
+        .mute-button {
             border: 0;
             border-radius: 18px;
             color: white;
@@ -319,18 +371,13 @@
             gap: 16px;
         }
 
-        .mute-button,
-        .save-button {
+        .mute-button {
             padding: 16px 20px;
             font-size: 1rem;
         }
 
         .mute-button {
             background: linear-gradient(160deg, var(--steel-a), var(--steel-b));
-        }
-
-        .save-button {
-            background: var(--ink);
         }
 
         .toggle-button {
@@ -354,13 +401,17 @@
 
         .toggle-button:active,
         .plus-button:active,
-        .mute-button:active,
-        .save-button:active {
+        .mute-button:active {
             transform: scale(0.99);
         }
 
         .is-hidden {
             display: none;
+        }
+
+        .is-disabled {
+            opacity: 0.55;
+            cursor: not-allowed;
         }
 
         @media (max-width: 1100px) {
@@ -495,7 +546,18 @@
                     </div>
                     <button type="button" id="mute-toggle-button" class="mute-button is-hidden">Un-mute</button>
                 </div>
-                <button type="submit" class="save-button">Update Scoreboard</button>
+                <div class="youtube-panel">
+                    <div class="audio-copy">
+                        <div class="audio-label">YouTube</div>
+                        <div id="youtube-status" class="audio-value">Not connected</div>
+                        <div id="youtube-detail" class="status-line">Create a stream when you are ready to go live.</div>
+                    </div>
+                    <div class="youtube-actions">
+                        <button type="button" id="create-stream-button" class="youtube-button">Create New Stream</button>
+                    </div>
+                    <div id="youtube-channel-list" class="channel-list"></div>
+                    <a id="youtube-broadcast-link" class="youtube-link is-hidden" href="#" target="_blank" rel="noopener noreferrer">Open YouTube broadcast</a>
+                </div>
                 <div class="settings-grid">
                     <label>
                         Left Team
@@ -513,6 +575,6 @@
             </section>
         </form>
     </div>
-    <script src="/static/js/app.js?v=20260325a"></script>
+    <script src="/static/js/app.js?v=20260327b"></script>
 </body>
 </html>

@@ -375,22 +375,11 @@
 
         .overlay-muted {
             position: absolute;
-            inset: 0;
-            display: grid;
-            place-items: center;
-            padding: 24px;
+            right: 16px;
+            bottom: 16px;
             color: rgba(255, 255, 255, 0.42);
-            font-size: clamp(2.7rem, 8vw, 5.6rem);
-            font-weight: 900;
-            letter-spacing: 0.08em;
-            text-transform: uppercase;
+            font-size: clamp(1.4rem, 3vw, 2.4rem);
             pointer-events: none;
-        }
-
-        .overlay-muted-badge {
-            padding: 16px 24px;
-            border-radius: 24px;
-            background: rgba(0, 0, 0, 0.12);
         }
 
         .visually-hidden {
@@ -596,7 +585,7 @@
                         <div id="overlay-away" class="overlay-chip away">Away: 0</div>
                         <div id="overlay-period" class="overlay-chip period">Period 1</div>
                         <div id="overlay-muted" class="overlay-muted is-hidden">
-                            <div class="overlay-muted-badge">Muted</div>
+                            <div aria-label="Muted">🔇</div>
                         </div>
                     </div>
                 </div>

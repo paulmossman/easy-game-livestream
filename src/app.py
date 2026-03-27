@@ -151,7 +151,7 @@ def current_overlay_text():
         'away': away_display,
         'period': state['period'],
         'time': state['time'],
-        'mute': 'MUTED' if state['mute'] else '',
+        'mute': '🔇' if state['mute'] else '',
     }
 
 def normalize_score_value(value):
@@ -579,7 +579,7 @@ def run_ffmpeg():
             '[v0]drawtext=box=0:fontcolor=white:fontsize=50:reload=1:textfile=/tmp/overlay-away.txt:x=w-tw-10:y=10[v1]',
             '[v1]drawtext=box=0:fontcolor=white:fontsize=56:reload=1:textfile=/tmp/overlay-time.txt:x=(w-tw)/2:y=10[v2]',
             '[v2]drawtext=box=0:fontcolor=white:fontsize=42:reload=1:textfile=/tmp/overlay-period.txt:x=10:y=h-th-(h*0.05)[v3]',
-            '[v3]drawtext=box=1:boxcolor=black@0.12:boxborderw=28:fontcolor=white@0.42:fontsize=92:reload=1:textfile=/tmp/overlay-mute.txt:x=(w-tw)/2:y=(h-th)/2[v4]',
+            '[v3]drawtext=box=0:fontfile=/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf:fontcolor=white@0.42:fontsize=52:reload=1:textfile=/tmp/overlay-mute.txt:x=w-tw-20:y=h-th-20[v4]',
             '[v4]split=2[v_preview][v_webrtc]',
             f'[0:a]{audio_control_target}=volume={current_volume_level()},asplit=2[a_preview][a_webrtc]',
         ])

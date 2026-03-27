@@ -1,7 +1,7 @@
 FROM python:3.9-slim
 
-# Install ffmpeg
-RUN apt-get update && apt-get install -y ffmpeg && rm -rf /var/lib/apt/lists/*
+# Install ffmpeg and an emoji-capable font for the mute icon overlay
+RUN apt-get update && apt-get install -y ffmpeg fonts-noto-color-emoji && rm -rf /var/lib/apt/lists/*
 
 # Set workdir
 WORKDIR /app

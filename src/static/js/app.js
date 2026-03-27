@@ -1,5 +1,6 @@
 const socket = io();
 let youtubeChannels = [];
+let latestOverlayVersion = null;
 
 function previewUrl() {
     const query = new URLSearchParams({
@@ -11,9 +12,17 @@ function previewUrl() {
     return `${window.location.protocol}//${window.location.hostname}:8889/live/preview/?${query.toString()}`;
 }
 
+function overlayImageUrl(version) {
+    const query = new URLSearchParams();
+    if (version !== null && version !== undefined) {
+        query.set('v', String(version));
+    }
+    return `/api/overlay/current.png${query.toString() ? `?${query.toString()}` : ''}`;
+}
+
 function setPreviewVisibility(showVideo) {
     document.getElementById('preview-frame').classList.toggle('is-hidden', !showVideo);
-    document.getElementById('overlay-mockup').classList.toggle('is-hidden', showVideo);
+    document.getElementById('overlay-image').classList.toggle('is-hidden', showVideo);
 }
 
 function initializePreviewPlayer() {
@@ -23,7 +32,16 @@ function initializePreviewPlayer() {
     }
 
     previewFrame.src = previewUrl();
+    refreshOverlayImage();
     setPreviewVisibility(document.getElementById('show-video').checked);
+}
+
+function refreshOverlayImage(version = latestOverlayVersion) {
+    if (version !== null && version !== undefined) {
+        latestOverlayVersion = version;
+    }
+
+    document.getElementById('overlay-image').src = overlayImageUrl(latestOverlayVersion);
 }
 
 function setYoutubeStatus(title, detail) {
@@ -235,29 +253,6 @@ function syncInputValue(id, value) {
     element.value = value;
 }
 
-function updateOverlayMockup(state) {
-    document.getElementById('overlay-home').textContent = teamDisplay(
-        document.getElementById('home-team').value,
-        document.getElementById('home-score').value,
-        state.home_pp,
-        state.home_en,
-        false
-    );
-    document.getElementById('overlay-away').textContent = teamDisplay(
-        document.getElementById('away-team').value,
-        document.getElementById('away-score').value,
-        state.away_pp,
-        state.away_en,
-        true
-    );
-    document.getElementById('overlay-time').textContent = state.time;
-    document.getElementById('overlay-period').textContent = state.period;
-    const isMuted = typeof state.mute === 'boolean'
-        ? state.mute
-        : document.getElementById('audio-state').textContent === 'Muted';
-    document.getElementById('overlay-muted').classList.toggle('is-hidden', !isMuted);
-}
-
 function renderState(state) {
     syncInputValue('home-team', state.home_team);
     syncInputValue('home-score', state.home_score);
@@ -286,7 +281,7 @@ function renderState(state) {
         state.away_en,
         true
     );
-    updateOverlayMockup(state);
+    refreshOverlayImage(state.overlay_version);
 
     const toggleButton = document.getElementById('start-stop-button');
     const statusText = document.getElementById('status-text');
@@ -393,14 +388,6 @@ function refreshTeamHeadingsFromInputs() {
         document.getElementById('away-en').checked,
         true
     );
-    updateOverlayMockup({
-        home_pp: document.getElementById('home-pp').checked,
-        home_en: document.getElementById('home-en').checked,
-        away_pp: document.getElementById('away-pp').checked,
-        away_en: document.getElementById('away-en').checked,
-        period: document.getElementById('period').value,
-        time: document.getElementById('time').value
-    });
 }
 
 document.getElementById('overlay-form').addEventListener('submit', submitOverlayUpdate);

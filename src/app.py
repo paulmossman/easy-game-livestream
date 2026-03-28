@@ -4,21 +4,18 @@ import json
 import re
 import threading
 import time
-import io
-import stat
 from datetime import datetime, timezone
 import urllib.error
 import urllib.parse
 import urllib.request
 from urllib.parse import parse_qs
-from flask import Flask, render_template, request, jsonify, redirect, session, url_for, send_file
+from flask import Flask, render_template, request, jsonify, redirect, session, url_for
 from flask_socketio import SocketIO, emit
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request as GoogleAuthRequest
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-from PIL import Image, ImageDraw, ImageFont
 
 # Load config
 config_path = '/app/config/config.json'
@@ -39,11 +36,12 @@ state = {
     'away_score': '0',
     'away_pp': False,
     'away_en': False,
+    'clock_mode': config.get('clock_mode', 'stop_time'),
+    'clock_running': False,
     'period': 'Period 1',
     'time': '20:00',
     'mute': False,
     'mute_on_stop': True,
-    'running': False,
     'incoming_audio_db': None,
     'incoming_audio_label': 'Waiting for stream',
     'incoming_audio_active': False,
@@ -53,10 +51,6 @@ relay_ffmpeg_process = None
 process_lock = threading.Lock()
 publish_start_generation = 0
 ffmpeg_ready = False
-overlay_image_path = '/tmp/current-overlay.png'
-overlay_pipe_path = '/tmp/overlay-video.pipe'
-overlay_image_bytes = b''
-overlay_version = 0
 muted_volume_level = '0.001'
 normal_volume_level = '1.0'
 stream_monitor_interval_seconds = float(config.get('stream_monitor_interval_seconds', 1.0))
@@ -64,7 +58,7 @@ mediamtx_api_url = config.get('mediamtx_api_url', 'http://mediamtx:9997/v3/paths
 last_stream_ready_state = None
 audio_control_target = 'volume@audio_gain'
 state_lock = threading.Lock()
-incoming_audio_monitor_interval_seconds = float(config.get('incoming_audio_monitor_interval_seconds', 4.0))
+incoming_audio_monitor_interval_seconds = float(config.get('incoming_audio_monitor_interval_seconds', 15.0))
 volume_pattern = re.compile(r'max_volume:\s*(-?\d+(?:\.\d+)?)\s*dB')
 config_lock = threading.Lock()
 google_oauth_scopes = [
@@ -87,9 +81,13 @@ runtime_youtube_destination = {
     'stream_key': None,
     'ingestion_address': None,
 }
-overlay_lock = threading.Lock()
-overlay_size = (1280, 720)
 primary_font_path = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'
+overlay_home_text_path = '/tmp/overlay-home.txt'
+overlay_away_text_path = '/tmp/overlay-away.txt'
+overlay_period_text_path = '/tmp/overlay-period.txt'
+overlay_time_text_path = '/tmp/overlay-time.txt'
+overlay_mute_text_path = '/tmp/overlay-mute.txt'
+last_overlay_signature = None
 
 def cleanup_ffmpeg():
     global ffmpeg_process, ffmpeg_ready
@@ -154,147 +152,41 @@ def current_overlay_text():
         'away': away_display,
         'period': state['period'],
         'time': state['time'],
-        'mute': '🔇' if state['mute'] else '',
+        'mute': 'MUTED' if state['mute'] else '',
     }
 
-def load_font(font_path, size):
-    try:
-        return ImageFont.truetype(font_path, size)
-    except OSError:
-        return ImageFont.load_default()
+def write_text_file(path, text):
+    with open(path, 'w', encoding='utf-8') as text_file:
+        text_file.write(text)
 
-def draw_overlay_chip(draw, text, font, anchor, position, align='left'):
-    if not text:
-        return
+def overlay_signature(overlay_text):
+    return (
+        overlay_text['home'],
+        overlay_text['away'],
+        overlay_text['period'],
+        overlay_text['time'],
+        overlay_text['mute'],
+    )
 
-    left, top, right, bottom = draw.textbbox((0, 0), text, font=font)
-    text_width = right - left
-    text_height = bottom - top
-    padding_x = 18
-    padding_y = 12
-
-    if anchor == 'lt':
-        x0 = position[0]
-        y0 = position[1]
-    elif anchor == 'rt':
-        x0 = position[0] - (text_width + (padding_x * 2))
-        y0 = position[1]
-    elif anchor == 'mt':
-        x0 = position[0] - ((text_width + (padding_x * 2)) / 2)
-        y0 = position[1]
-    elif anchor == 'lb':
-        x0 = position[0]
-        y0 = position[1] - (text_height + (padding_y * 2))
-    else:
-        x0 = position[0]
-        y0 = position[1]
-
-    x1 = x0 + text_width + (padding_x * 2)
-    y1 = y0 + text_height + (padding_y * 2)
-    draw.rounded_rectangle((x0, y0, x1, y1), radius=18, fill=(0, 0, 0, 176))
-    text_x = x0 + padding_x
-    text_y = y0 + padding_y - top
-    draw.text((text_x, text_y), text, font=font, fill=(255, 255, 255, 255), align=align)
-
-def draw_mute_icon(draw, x, y, size, color):
-    stroke_width = max(3, size // 11)
-    join_x = x + int(size * 0.34)
-    top_y = y + int(size * 0.28)
-    bottom_y = y + int(size * 0.72)
-    mid_y = y + (size // 2)
-    back_x = x + int(size * 0.16)
-    front_x = x + int(size * 0.60)
-    tip_x = x + int(size * 0.78)
-
-    draw.line((back_x, top_y, join_x, top_y), fill=color, width=stroke_width)
-    draw.line((back_x, bottom_y, join_x, bottom_y), fill=color, width=stroke_width)
-    draw.line((back_x, top_y, back_x, bottom_y), fill=color, width=stroke_width)
-    draw.line((join_x, top_y, front_x, y + int(size * 0.14)), fill=color, width=stroke_width)
-    draw.line((join_x, bottom_y, front_x, y + int(size * 0.86)), fill=color, width=stroke_width)
-    draw.line((front_x, y + int(size * 0.14), front_x, y + int(size * 0.86)), fill=color, width=stroke_width)
-
-    cross_size = int(size * 0.18)
-    cross_left = tip_x - cross_size
-    cross_right = tip_x + cross_size
-    cross_top = mid_y - cross_size
-    cross_bottom = mid_y + cross_size
-    draw.line((cross_left, cross_top, cross_right, cross_bottom), fill=color, width=stroke_width)
-    draw.line((cross_left, cross_bottom, cross_right, cross_top), fill=color, width=stroke_width)
-
-def render_overlay_png_bytes():
+def write_overlay_text(force=False):
+    global last_overlay_signature
     overlay_text = current_overlay_text()
-    image = Image.new('RGBA', overlay_size, (0, 0, 0, 0))
-    draw = ImageDraw.Draw(image)
-    width, height = overlay_size
+    current_signature = overlay_signature(overlay_text)
 
-    label_font = load_font(primary_font_path, 38)
-    time_font = load_font(primary_font_path, 44)
-    period_font = load_font(primary_font_path, 32)
+    if not force and current_signature == last_overlay_signature:
+        return False
 
-    draw_overlay_chip(draw, overlay_text['home'], label_font, 'lt', (18, 18))
-    draw_overlay_chip(draw, overlay_text['away'], label_font, 'rt', (width - 18, 18), align='right')
-    draw_overlay_chip(draw, overlay_text['time'], time_font, 'mt', (width / 2, 18), align='center')
-    draw_overlay_chip(draw, overlay_text['period'], period_font, 'lb', (18, height - 18))
-
-    if overlay_text['mute']:
-        icon_size = 80
-        icon_inset = 30
-        draw_mute_icon(
-            draw,
-            width - icon_size - icon_inset,
-            height - icon_size - icon_inset,
-            icon_size,
-            (255, 255, 255, 168),
-        )
-
-    buffer = io.BytesIO()
-    image.save(buffer, format='PNG')
-    return buffer.getvalue()
-
-def write_overlay_text():
-    global overlay_image_bytes, overlay_version
-    png_bytes = render_overlay_png_bytes()
-
-    with overlay_lock:
-        overlay_image_bytes = png_bytes
-        overlay_version += 1
-        current_version = overlay_version
-
-    temp_path = f'{overlay_image_path}.tmp'
-    with open(temp_path, 'wb') as overlay_file:
-        overlay_file.write(png_bytes)
-    os.replace(temp_path, overlay_image_path)
-    print(f"Overlay image updated (version {current_version})", flush=True)
+    write_text_file(overlay_home_text_path, overlay_text['home'])
+    write_text_file(overlay_away_text_path, overlay_text['away'])
+    write_text_file(overlay_period_text_path, overlay_text['period'])
+    write_text_file(overlay_time_text_path, overlay_text['time'])
+    write_text_file(overlay_mute_text_path, overlay_text['mute'])
+    last_overlay_signature = current_signature
+    print("Overlay text updated", flush=True)
+    return True
 
 def current_state_payload():
-    payload = dict(state)
-    with overlay_lock:
-        payload['overlay_version'] = overlay_version
-    return payload
-
-def ensure_overlay_pipe():
-    if os.path.exists(overlay_pipe_path):
-        if not stat.S_ISFIFO(os.stat(overlay_pipe_path).st_mode):
-            os.remove(overlay_pipe_path)
-    if not os.path.exists(overlay_pipe_path):
-        os.mkfifo(overlay_pipe_path)
-
-def stream_overlay_pipe(process):
-    while process.poll() is None:
-        try:
-            with open(overlay_pipe_path, 'wb') as pipe:
-                while process.poll() is None:
-                    with overlay_lock:
-                        png_bytes = overlay_image_bytes
-                    if png_bytes:
-                        pipe.write(png_bytes)
-                        pipe.flush()
-                    time.sleep(0.5)
-        except (BrokenPipeError, FileNotFoundError):
-            time.sleep(0.1)
-        except OSError as e:
-            print(f"Overlay pipe writer error: {e}", flush=True)
-            time.sleep(0.5)
+    return dict(state)
 
 def normalize_score_value(value):
     try:
@@ -348,21 +240,21 @@ def tick_game_clock():
     while True:
         time.sleep(1)
         with state_lock:
-            if not state['running']:
+            if not state['clock_running']:
                 continue
             remaining_seconds = parse_clock(state['time'])
             if remaining_seconds is None:
                 continue
             if remaining_seconds <= 0:
-                state['running'] = False
-                if state['mute_on_stop']:
+                state['clock_running'] = False
+                if state['clock_mode'] == 'stop_time' and state['mute_on_stop']:
                     state['mute'] = True
                 updated_state = current_state_payload()
             else:
                 state['time'] = format_clock(remaining_seconds - 1)
                 if parse_clock(state['time']) == 0:
-                    state['running'] = False
-                    if state['mute_on_stop']:
+                    state['clock_running'] = False
+                    if state['clock_mode'] == 'stop_time' and state['mute_on_stop']:
                         state['mute'] = True
                 updated_state = current_state_payload()
         write_overlay_text()
@@ -503,7 +395,7 @@ def create_youtube_broadcast_for_channel(channel_id, home_team=None, away_team=N
     now = datetime.now(timezone.utc).replace(microsecond=0)
     title = youtube_title_for_today(home_team=home_team, away_team=away_team)
     latency = config.get('youtube_latency_preference', 'ultraLow')
-    privacy = config.get('youtube_privacy_status', 'unlisted')
+    privacy = config.get('youtube_privacy_status', 'public')
 
     stream_response = service.liveStreams().insert(
         part='snippet,cdn,contentDetails,status',
@@ -633,13 +525,17 @@ def monitor_input_audio():
         time.sleep(incoming_audio_monitor_interval_seconds)
 
 def current_stream_path():
-    parsed = urllib.parse.urlparse(current_input_url())
-    path = parsed.path.strip('/')
-    return path
+    return stream_path_from_url(current_input_url())
 
-def is_stream_ready():
+def stream_path_from_url(url):
+    parsed = urllib.parse.urlparse(url)
+    return parsed.path.strip('/')
+
+def mediamtx_path_ready(stream_path):
     global last_stream_ready_state
-    stream_path = current_stream_path()
+    if not stream_path:
+        return False
+
     try:
         with urllib.request.urlopen(mediamtx_api_url, timeout=2) as response:
             payload = json.load(response)
@@ -665,6 +561,9 @@ def is_stream_ready():
         last_stream_ready_state = False
     return False
 
+def is_stream_ready():
+    return mediamtx_path_ready(current_stream_path())
+
 def start_relay_ffmpeg():
     global relay_ffmpeg_process
     upstream_url = current_upstream_output_url()
@@ -674,6 +573,9 @@ def start_relay_ffmpeg():
         return
 
     input_url = current_preview_output_url()
+    if not mediamtx_path_ready(stream_path_from_url(input_url)):
+        return
+
     try:
         relay_cmd = [
             'ffmpeg',
@@ -704,11 +606,13 @@ def run_ffmpeg():
     try:
         stop_ffmpeg()
         ffmpeg_ready = False
-        write_overlay_text()
-        ensure_overlay_pipe()
+        write_overlay_text(force=True)
         filter_complex = ';'.join([
-            '[1:v]format=rgba[overlay]',
-            '[0:v][overlay]overlay=0:0:repeatlast=1:format=auto[v_composited]',
+            f"[0:v]drawtext=fontfile={primary_font_path}:textfile={overlay_home_text_path}:reload=1:fontcolor=white:fontsize=38:box=1:boxcolor=black@0.69:boxborderw=18:x=18:y=18[v_home]",
+            f"[v_home]drawtext=fontfile={primary_font_path}:textfile={overlay_away_text_path}:reload=1:fontcolor=white:fontsize=38:box=1:boxcolor=black@0.69:boxborderw=18:x=w-tw-36:y=18[v_away]",
+            f"[v_away]drawtext=fontfile={primary_font_path}:textfile={overlay_time_text_path}:reload=1:fontcolor=white:fontsize=44:box=1:boxcolor=black@0.69:boxborderw=18:x=(w-tw)/2:y=18[v_time]",
+            f"[v_time]drawtext=fontfile={primary_font_path}:textfile={overlay_period_text_path}:reload=1:fontcolor=white:fontsize=32:box=1:boxcolor=black@0.69:boxborderw=18:x=18:y=h-th-36[v_period]",
+            f"[v_period]drawtext=fontfile={primary_font_path}:textfile={overlay_mute_text_path}:reload=1:fontcolor=white@0.76:fontsize=38:x=w-tw-34:y=h-th-72[v_composited]",
             '[v_composited]split=2[v_preview][v_webrtc]',
             f'[0:a]{audio_control_target}=volume={current_volume_level()},asplit=2[a_preview][a_webrtc]',
         ])
@@ -716,11 +620,6 @@ def run_ffmpeg():
             'ffmpeg',
             '-rtmp_live', 'live',
             '-i', input_url,
-            '-thread_queue_size', '8',
-            '-f', 'image2pipe',
-            '-framerate', '2',
-            '-vcodec', 'png',
-            '-i', overlay_pipe_path,
             '-filter_complex', filter_complex,
             '-map', '[v_preview]',
             '-map', '[a_preview]',
@@ -767,7 +666,6 @@ def run_ffmpeg():
             cleanup_ffmpeg()
             return
 
-        threading.Thread(target=stream_overlay_pipe, args=(ffmpeg_process,), daemon=True).start()
         threading.Thread(target=watch_ffmpeg, args=(ffmpeg_process,), daemon=True).start()
         start_relay_ffmpeg()
     except Exception as e:
@@ -785,6 +683,8 @@ def monitor_stream():
             elif not ready and running:
                 print("MediaMTX stream is not ready; stopping FFmpeg", flush=True)
                 stop_ffmpeg()
+            elif running and not is_relay_ffmpeg_running():
+                start_relay_ffmpeg()
         time.sleep(stream_monitor_interval_seconds)
 
 app = Flask(__name__)
@@ -795,17 +695,24 @@ def apply_overlay_update(data):
     global state
     with state_lock:
         previous_mute = state['mute']
+        previous_clock_mode = state['clock_mode']
         if 'home_score' in data:
             data['home_score'] = normalize_score_value(data['home_score'])
         if 'away_score' in data:
             data['away_score'] = normalize_score_value(data['away_score'])
+        if 'clock_mode' in data and data['clock_mode'] not in ('stop_time', 'run_time'):
+            data['clock_mode'] = 'stop_time'
         state.update(data)
-        if 'mute_on_stop' in data and state['mute_on_stop'] and not state['running']:
+        if state['clock_mode'] != previous_clock_mode:
+            state['clock_running'] = False
+        if state['clock_mode'] == 'run_time' and ('period' in data or 'time' in data):
+            state['clock_running'] = False
+        if 'mute_on_stop' in data and state['clock_mode'] == 'stop_time' and state['mute_on_stop'] and not state['clock_running']:
             state['mute'] = True
-        if 'running' in data:
-            state['running'] = bool(data['running'])
-            if state['mute_on_stop']:
-                state['mute'] = not state['running']
+        if 'clock_running' in data:
+            state['clock_running'] = bool(data['clock_running'])
+            if state['clock_mode'] == 'stop_time' and state['mute_on_stop']:
+                state['mute'] = not state['clock_running']
         updated_state = current_state_payload()
     print("Updating overlay with data:", data, flush=True)
     if updated_state['mute'] != previous_mute:
@@ -828,24 +735,6 @@ def index():
 def get_state():
     return jsonify(current_state_payload())
 
-@app.route('/api/overlay/current.png', methods=['GET'])
-def get_overlay_image():
-    with overlay_lock:
-        png_bytes = overlay_image_bytes
-
-    if not png_bytes and os.path.exists(overlay_image_path):
-        with open(overlay_image_path, 'rb') as overlay_file:
-            png_bytes = overlay_file.read()
-
-    if not png_bytes:
-        write_overlay_text()
-        with overlay_lock:
-            png_bytes = overlay_image_bytes
-
-    response = send_file(io.BytesIO(png_bytes), mimetype='image/png', max_age=0)
-    response.headers['Cache-Control'] = 'no-store'
-    return response
-
 @app.route('/api/state', methods=['POST'])
 def update_state():
     data = request.get_json(silent=True) or request.form.to_dict()
@@ -854,8 +743,8 @@ def update_state():
     for key in ('home_pp', 'home_en', 'away_pp', 'away_en', 'mute_on_stop'):
         if key in data and not isinstance(data[key], bool):
             data[key] = str(data[key]).lower() in ('1', 'true', 'yes', 'on')
-    if 'running' in data and not isinstance(data['running'], bool):
-        data['running'] = str(data['running']).lower() in ('1', 'true', 'yes', 'on')
+    if 'clock_running' in data and not isinstance(data['clock_running'], bool):
+        data['clock_running'] = str(data['clock_running']).lower() in ('1', 'true', 'yes', 'on')
     updated_state = apply_overlay_update(data)
     return jsonify(updated_state)
 

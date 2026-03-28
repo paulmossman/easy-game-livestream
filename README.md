@@ -107,3 +107,5 @@ Before clicking `Go live` in YouTube Studio, verify:
 The application uses MediaMTX to receive the RTMP stream from PRISM, and ffmpeg reads that stream, adds text overlays, and publishes both an AAC RTMP/HLS program feed and an Opus RTSP WebRTC preview feed.
 
 Use `preview_output_url` / `preview_stream_key` for the local RTMP/HLS program feed, `webrtc_preview_output_url` / `webrtc_preview_stream_key` for the low-latency WebRTC preview target, and `youtube_output_url` / `youtube_stream_key` for the upstream RTMP destination.
+
+If you use the optional Web UI `Create New Stream` flow, you can also set `youtube_privacy_status` in `config/config.json` to control the visibility of newly created YouTube broadcasts. Supported values are `public`, `unlisted`, and `private`. If you do not set it, the app currently defaults to `public`. This setting does not affect the manual YouTube Studio flow, since visibility is chosen directly in YouTube Studio there.

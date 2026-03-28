@@ -1,6 +1,6 @@
 const socket = io();
 let youtubeChannels = [];
-let latestOverlayVersion = null;
+let latestState = {};
 
 function previewUrl() {
     const query = new URLSearchParams({
@@ -12,17 +12,9 @@ function previewUrl() {
     return `${window.location.protocol}//${window.location.hostname}:8889/live/preview/?${query.toString()}`;
 }
 
-function overlayImageUrl(version) {
-    const query = new URLSearchParams();
-    if (version !== null && version !== undefined) {
-        query.set('v', String(version));
-    }
-    return `/api/overlay/current.png${query.toString() ? `?${query.toString()}` : ''}`;
-}
-
 function setPreviewVisibility(showVideo) {
     document.getElementById('preview-frame').classList.toggle('is-hidden', !showVideo);
-    document.getElementById('overlay-image').classList.toggle('is-hidden', showVideo);
+    document.getElementById('overlay-mock').classList.toggle('is-hidden', showVideo);
 }
 
 function initializePreviewPlayer() {
@@ -32,16 +24,7 @@ function initializePreviewPlayer() {
     }
 
     previewFrame.src = previewUrl();
-    refreshOverlayImage();
     setPreviewVisibility(document.getElementById('show-video').checked);
-}
-
-function refreshOverlayImage(version = latestOverlayVersion) {
-    if (version !== null && version !== undefined) {
-        latestOverlayVersion = version;
-    }
-
-    document.getElementById('overlay-image').src = overlayImageUrl(latestOverlayVersion);
 }
 
 function setYoutubeStatus(title, detail) {
@@ -228,6 +211,26 @@ function teamDisplay(teamName, score, ppEnabled, enEnabled, isRightSide) {
     return `${safeTeamName}: ${safeScore}${flags.length ? ` ${flags.join(' ')}` : ''}`;
 }
 
+function renderOverlayMock(state) {
+    document.getElementById('overlay-home-text').textContent = teamDisplay(
+        state.home_team,
+        state.home_score,
+        state.home_pp,
+        state.home_en,
+        false
+    );
+    document.getElementById('overlay-away-text').textContent = teamDisplay(
+        state.away_team,
+        state.away_score,
+        state.away_pp,
+        state.away_en,
+        true
+    );
+    document.getElementById('overlay-time-text').textContent = state.time;
+    document.getElementById('overlay-period-text').textContent = state.period;
+    document.getElementById('overlay-mute-icon').classList.toggle('is-hidden', !state.mute);
+}
+
 function currentFormData() {
     return {
         home_team: document.getElementById('home-team').value,
@@ -238,6 +241,7 @@ function currentFormData() {
         away_score: document.getElementById('away-score').value,
         away_pp: document.getElementById('away-pp').checked,
         away_en: document.getElementById('away-en').checked,
+        clock_mode: document.getElementById('clock-mode').value,
         period: document.getElementById('period').value,
         time: document.getElementById('time').value,
         mute_on_stop: document.getElementById('mute-on-stop').checked
@@ -254,6 +258,7 @@ function syncInputValue(id, value) {
 }
 
 function renderState(state) {
+    latestState = state;
     syncInputValue('home-team', state.home_team);
     syncInputValue('home-score', state.home_score);
     document.getElementById('home-pp').checked = Boolean(state.home_pp);
@@ -262,11 +267,13 @@ function renderState(state) {
     syncInputValue('away-score', state.away_score);
     document.getElementById('away-pp').checked = Boolean(state.away_pp);
     document.getElementById('away-en').checked = Boolean(state.away_en);
+    if (document.activeElement !== document.getElementById('clock-mode')) {
+        document.getElementById('clock-mode').value = state.clock_mode || 'stop_time';
+    }
     if (document.activeElement !== document.getElementById('period')) {
         document.getElementById('period').value = state.period;
     }
     syncInputValue('time', state.time);
-    document.getElementById('time-display').textContent = state.time;
     document.getElementById('home-team-heading').textContent = teamDisplay(
         document.getElementById('home-team').value,
         document.getElementById('home-score').value,
@@ -281,26 +288,39 @@ function renderState(state) {
         state.away_en,
         true
     );
-    refreshOverlayImage(state.overlay_version);
+    renderOverlayMock(state);
 
     const toggleButton = document.getElementById('start-stop-button');
-    const statusText = document.getElementById('status-text');
-    const audioState = document.getElementById('audio-state');
     const incomingAudioLabel = document.getElementById('incoming-audio-label');
     const incomingAudioMeter = document.getElementById('incoming-audio-meter');
     const muteOnStop = document.getElementById('mute-on-stop');
     const muteToggleButton = document.getElementById('mute-toggle-button');
-    const isRunning = Boolean(state.running);
+    const clockToggleButton = document.getElementById('clock-toggle-button');
+    const clockMode = state.clock_mode || 'stop_time';
+    const clockRunning = Boolean(state.clock_running);
+    const isMuted = Boolean(state.mute);
 
     muteOnStop.checked = Boolean(state.mute_on_stop);
-    toggleButton.textContent = isRunning ? 'Stop' : 'Start';
-    toggleButton.classList.toggle('stopped', !isRunning);
-    statusText.textContent = isRunning ? 'Running' : 'Stopped';
-    audioState.textContent = state.mute ? 'Muted' : 'Un-muted';
     incomingAudioLabel.textContent = state.incoming_audio_label || 'Waiting for stream';
     incomingAudioMeter.style.width = `${meterWidthFromDb(state.incoming_audio_db)}%`;
     incomingAudioMeter.classList.toggle('is-silent', !state.incoming_audio_active);
-    muteToggleButton.textContent = state.mute ? 'Un-mute' : 'Mute';
+    clockToggleButton.textContent = clockRunning ? 'Stop' : 'Start';
+    clockToggleButton.classList.toggle('stopped', !clockRunning);
+    clockToggleButton.classList.toggle('is-hidden', clockMode !== 'run_time');
+
+    if (clockMode === 'stop_time') {
+        toggleButton.classList.remove('is-hidden');
+        toggleButton.textContent = clockRunning ? 'Stop' : 'Start';
+        toggleButton.classList.toggle('stopped', !clockRunning);
+    } else if (state.mute_on_stop) {
+        toggleButton.classList.remove('is-hidden');
+        toggleButton.textContent = isMuted ? 'Un-mute' : 'Mute';
+        toggleButton.classList.toggle('stopped', !isMuted);
+    } else {
+        toggleButton.classList.add('is-hidden');
+    }
+
+    muteToggleButton.textContent = isMuted ? 'Un-mute' : 'Mute';
     muteToggleButton.classList.toggle('is-hidden', Boolean(state.mute_on_stop));
 }
 
@@ -325,11 +345,28 @@ async function submitOverlayUpdate(event) {
     await postState(currentFormData());
 }
 
-async function toggleRunning() {
-    const isRunning = document.getElementById('start-stop-button').textContent === 'Stop';
+async function togglePrimaryAction() {
+    const clockMode = latestState.clock_mode || 'stop_time';
+    if (clockMode === 'stop_time') {
+        await postState({
+            ...currentFormData(),
+            clock_running: !Boolean(latestState.clock_running)
+        });
+        return;
+    }
+
+    if (latestState.mute_on_stop) {
+        await postState({
+            ...currentFormData(),
+            mute: !Boolean(latestState.mute)
+        });
+    }
+}
+
+async function toggleClockRunning() {
     await postState({
         ...currentFormData(),
-        running: !isRunning
+        clock_running: !Boolean(latestState.clock_running)
     });
 }
 
@@ -341,10 +378,9 @@ async function incrementScore(scoreFieldId) {
 }
 
 async function toggleMute() {
-    const isMuted = document.getElementById('audio-state').textContent === 'Muted';
     await postState({
         ...currentFormData(),
-        mute: !isMuted
+        mute: !Boolean(latestState.mute)
     });
 }
 
@@ -359,8 +395,12 @@ async function handleGlobalKeypress(event) {
         return;
     }
 
+    if (document.getElementById('start-stop-button').classList.contains('is-hidden')) {
+        return;
+    }
+
     event.preventDefault();
-    await toggleRunning();
+    await togglePrimaryAction();
 }
 
 async function loadInitialState() {
@@ -391,13 +431,15 @@ function refreshTeamHeadingsFromInputs() {
 }
 
 document.getElementById('overlay-form').addEventListener('submit', submitOverlayUpdate);
-document.getElementById('start-stop-button').addEventListener('click', toggleRunning);
+document.getElementById('start-stop-button').addEventListener('click', togglePrimaryAction);
+document.getElementById('clock-toggle-button').addEventListener('click', toggleClockRunning);
 document.getElementById('home-plus').addEventListener('click', () => incrementScore('home-score'));
 document.getElementById('away-plus').addEventListener('click', () => incrementScore('away-score'));
 document.getElementById('home-pp').addEventListener('change', submitOverlayUpdate);
 document.getElementById('home-en').addEventListener('change', submitOverlayUpdate);
 document.getElementById('away-pp').addEventListener('change', submitOverlayUpdate);
 document.getElementById('away-en').addEventListener('change', submitOverlayUpdate);
+document.getElementById('clock-mode').addEventListener('change', submitOverlayUpdate);
 document.getElementById('home-team').addEventListener('blur', submitOverlayUpdate);
 document.getElementById('away-team').addEventListener('blur', submitOverlayUpdate);
 document.getElementById('home-score').addEventListener('blur', submitOverlayUpdate);

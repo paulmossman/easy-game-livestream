@@ -1,2 +1,4 @@
 config/*
+data/*
+!data/.gitkeep
 src/__pycache__

@@ -1,6 +1,7 @@
 const socket = io();
 let youtubeChannels = [];
 let latestState = {};
+const youtubeCreatePendingKey = 'youtube-create-pending';
 
 function previewUrl() {
     const query = new URLSearchParams({
@@ -39,9 +40,20 @@ function setCreateStreamAvailability(enabled, label) {
     button.classList.toggle('is-disabled', !enabled);
 }
 
+function setStopStreamAvailability(visible, disabled = false) {
+    const button = document.getElementById('stop-stream-button');
+    button.classList.toggle('is-hidden', !visible);
+    button.disabled = disabled;
+    button.classList.toggle('is-disabled', disabled);
+}
+
 function renderYouTubeChannels(channels) {
     const container = document.getElementById('youtube-channel-list');
     container.innerHTML = '';
+
+    if (channels.length <= 1) {
+        return;
+    }
 
     channels.forEach((channel) => {
         const button = document.createElement('button');
@@ -55,6 +67,10 @@ function renderYouTubeChannels(channels) {
 
 async function maybeAutoCreateYouTubeStream() {
     if (youtubeChannels.length !== 1) {
+        return false;
+    }
+
+    if (window.sessionStorage.getItem(youtubeCreatePendingKey) !== '1') {
         return false;
     }
 
@@ -74,6 +90,11 @@ function renderYouTubeBroadcastLink(data) {
     link.classList.add('is-hidden');
 }
 
+function renderYouTubeActions(data, canStop = false) {
+    renderYouTubeBroadcastLink(data);
+    setStopStreamAvailability(Boolean(data && data.broadcast_url && canStop));
+}
+
 async function loadYouTubeStatus() {
     const response = await fetch('/api/youtube/status');
     if (!response.ok) {
@@ -89,7 +110,7 @@ async function loadYouTubeStatus() {
         setCreateStreamAvailability(false, 'Create New Stream Unavailable');
         setYoutubeStatus('Manual YouTube Studio mode', 'This app can publish with a reusable stream key, but browser-created YouTube streams are disabled until Google OAuth is configured.');
         renderYouTubeChannels([]);
-        renderYouTubeBroadcastLink(null);
+        renderYouTubeActions(null, false);
         return;
     }
 
@@ -98,7 +119,7 @@ async function loadYouTubeStatus() {
     if (!data.authorized) {
         setYoutubeStatus('Not connected', data.authorization_error || 'Sign in to YouTube before creating a stream.');
         renderYouTubeChannels([]);
-        renderYouTubeBroadcastLink(null);
+        renderYouTubeActions(null, false);
         return;
     }
 
@@ -108,18 +129,22 @@ async function loadYouTubeStatus() {
             data.active_destination.channel_title || 'Connected',
             data.active_destination.broadcast_title || 'Current YouTube broadcast is ready.'
         );
-        renderYouTubeBroadcastLink(data.active_destination);
+        renderYouTubeActions(data.active_destination, Boolean(data.can_stop));
     } else if (youtubeChannels.length > 0) {
         if (await maybeAutoCreateYouTubeStream()) {
             renderYouTubeChannels([]);
             return;
         }
 
-        setYoutubeStatus('Choose a channel', 'Pick which YouTube channel should receive the new live stream.');
-        renderYouTubeBroadcastLink(null);
+        if (youtubeChannels.length === 1) {
+            setYoutubeStatus('YouTube ready', 'Create a new stream when you are ready to go live.');
+        } else {
+            setYoutubeStatus('Choose a channel', 'Select which YouTube channel should receive the new stream.');
+        }
+        renderYouTubeActions(null, false);
     } else {
         setYoutubeStatus('Connected', 'No YouTube channels were returned for this login.');
-        renderYouTubeBroadcastLink(null);
+        renderYouTubeActions(null, false);
     }
 
     renderYouTubeChannels(youtubeChannels);
@@ -154,12 +179,15 @@ async function handleCreateStreamClick() {
     }
 
     setYoutubeStatus('Connecting to YouTube', 'Complete the Google sign-in flow, then pick a channel here.');
+    window.sessionStorage.setItem(youtubeCreatePendingKey, '1');
     openYouTubeOAuthPopup();
 }
 
 async function createYouTubeStream(channelId) {
     setYoutubeStatus('Creating stream', 'Asking YouTube to create a brand-new immediate live broadcast.');
+    setStopStreamAvailability(false);
     const formData = currentFormData();
+    await postState(formData);
     const response = await fetch('/api/youtube/create-stream', {
         method: 'POST',
         headers: {
@@ -178,10 +206,33 @@ async function createYouTubeStream(channelId) {
         return;
     }
 
+    window.sessionStorage.removeItem(youtubeCreatePendingKey);
     youtubeChannels = [];
     renderYouTubeChannels([]);
-    renderYouTubeBroadcastLink(data);
+    renderYouTubeActions(data, true);
     setYoutubeStatus(data.channel_title || 'YouTube ready', data.title || 'Broadcast created.');
+}
+
+async function stopYouTubeStream() {
+    setYoutubeStatus('Stopping stream', 'Asking YouTube to stop the current live broadcast.');
+    setStopStreamAvailability(true, true);
+
+    const response = await fetch('/api/youtube/stop-stream', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    });
+    const data = await response.json();
+
+    if (!response.ok) {
+        setYoutubeStatus('Stop failed', data.error || 'YouTube did not accept the stop request.');
+        setStopStreamAvailability(true, false);
+        return;
+    }
+
+    setYoutubeStatus(data.channel_title || 'YouTube stopped', 'The active YouTube broadcast has been stopped.');
+    renderYouTubeActions(data, false);
 }
 
 function meterWidthFromDb(audioDb) {
@@ -345,6 +396,14 @@ async function submitOverlayUpdate(event) {
     await postState(currentFormData());
 }
 
+async function submitTeamNameUpdate() {
+    await postState(currentFormData());
+    if (document.getElementById('stop-stream-button').classList.contains('is-hidden')) {
+        return;
+    }
+    await loadYouTubeStatus();
+}
+
 async function togglePrimaryAction() {
     const clockMode = latestState.clock_mode || 'stop_time';
     if (clockMode === 'stop_time') {
@@ -440,8 +499,8 @@ document.getElementById('home-en').addEventListener('change', submitOverlayUpdat
 document.getElementById('away-pp').addEventListener('change', submitOverlayUpdate);
 document.getElementById('away-en').addEventListener('change', submitOverlayUpdate);
 document.getElementById('clock-mode').addEventListener('change', submitOverlayUpdate);
-document.getElementById('home-team').addEventListener('blur', submitOverlayUpdate);
-document.getElementById('away-team').addEventListener('blur', submitOverlayUpdate);
+document.getElementById('home-team').addEventListener('blur', submitTeamNameUpdate);
+document.getElementById('away-team').addEventListener('blur', submitTeamNameUpdate);
 document.getElementById('home-score').addEventListener('blur', submitOverlayUpdate);
 document.getElementById('away-score').addEventListener('blur', submitOverlayUpdate);
 document.getElementById('period').addEventListener('change', submitOverlayUpdate);
@@ -457,6 +516,7 @@ document.getElementById('time').addEventListener('input', refreshTeamHeadingsFro
 document.getElementById('mute-on-stop').addEventListener('change', submitOverlayUpdate);
 document.getElementById('mute-toggle-button').addEventListener('click', toggleMute);
 document.getElementById('create-stream-button').addEventListener('click', handleCreateStreamClick);
+document.getElementById('stop-stream-button').addEventListener('click', stopYouTubeStream);
 document.getElementById('home-team').addEventListener('input', refreshTeamHeadingsFromInputs);
 document.getElementById('away-team').addEventListener('input', refreshTeamHeadingsFromInputs);
 document.getElementById('show-video').addEventListener('change', (event) => setPreviewVisibility(event.target.checked));
@@ -466,6 +526,7 @@ window.addEventListener('message', (event) => {
         return;
     }
     if (event.data && event.data.type === 'youtube-oauth-complete') {
+        window.sessionStorage.setItem(youtubeCreatePendingKey, '1');
         loadYouTubeStatus();
     }
 });

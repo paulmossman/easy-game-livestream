@@ -126,6 +126,10 @@
             background: linear-gradient(160deg, #b84029, #d9643c);
         }
 
+        .youtube-button.stop-button {
+            background: linear-gradient(160deg, var(--steel-a), var(--steel-b));
+        }
+
         .channel-list {
             display: grid;
             gap: 10px;
@@ -645,6 +649,7 @@
                     </div>
                     <div class="youtube-actions">
                         <button type="button" id="create-stream-button" class="youtube-button">Create New Stream</button>
+                        <button type="button" id="stop-stream-button" class="youtube-button stop-button is-hidden">Stop Stream</button>
                     </div>
                     <div id="youtube-channel-list" class="channel-list"></div>
                     <a id="youtube-broadcast-link" class="youtube-link is-hidden" href="#" target="_blank" rel="noopener noreferrer">Open YouTube broadcast</a>
@@ -663,6 +668,6 @@
 
         </form>
     </div>
-    <script src="/static/js/app.js?v=20260327j"></script>
+    <script src="/static/js/app.js?v=20260327n"></script>
 </body>
 </html>

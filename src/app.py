@@ -66,7 +66,9 @@ google_oauth_scopes = [
     'https://www.googleapis.com/auth/youtube.force-ssl',
 ]
 google_oauth_state_key = 'youtube_oauth_state'
-google_token_path = '/tmp/youtube-oauth-token.json'
+app_data_dir = '/app/data'
+google_token_path = os.path.join(app_data_dir, 'youtube-oauth-token.json')
+runtime_youtube_destination_path = os.path.join(app_data_dir, 'youtube-active-destination.json')
 google_client_secret_paths = [
     '/app/config/google_oauth_client_secret.json',
     '/app/config/client_secret.json',
@@ -74,6 +76,7 @@ google_client_secret_paths = [
 runtime_youtube_destination = {
     'broadcast_id': None,
     'broadcast_title': None,
+    'broadcast_status': None,
     'broadcast_url': None,
     'channel_id': None,
     'channel_title': None,
@@ -88,6 +91,9 @@ overlay_period_text_path = '/tmp/overlay-period.txt'
 overlay_time_text_path = '/tmp/overlay-time.txt'
 overlay_mute_text_path = '/tmp/overlay-mute.txt'
 last_overlay_signature = None
+
+def ensure_app_data_dir():
+    os.makedirs(app_data_dir, exist_ok=True)
 
 def cleanup_ffmpeg():
     global ffmpeg_process, ffmpeg_ready
@@ -281,8 +287,14 @@ def current_webrtc_preview_output_url():
     return build_rtmp_url(output_base, output_key)
 
 def current_upstream_output_url():
-    output_base = runtime_youtube_destination['ingestion_address'] or config.get('youtube_output_url') or ''
-    output_key = runtime_youtube_destination['stream_key'] or os.getenv('YOUTUBE_STREAM_KEY') or config.get('youtube_stream_key') or ''
+    if runtime_youtube_destination.get('broadcast_id'):
+        if runtime_youtube_destination.get('broadcast_status') == 'complete':
+            return ''
+        output_base = runtime_youtube_destination['ingestion_address'] or config.get('youtube_output_url') or ''
+        output_key = runtime_youtube_destination['stream_key'] or ''
+    else:
+        output_base = config.get('youtube_output_url') or ''
+        output_key = os.getenv('YOUTUBE_STREAM_KEY') or config.get('youtube_stream_key') or ''
     if not output_base:
         return ''
     return build_rtmp_url(output_base, output_key)
@@ -292,6 +304,29 @@ def save_config():
         with open(config_path, 'w', encoding='utf-8') as f:
             json.dump(config, f, indent=4)
             f.write('\n')
+
+def save_runtime_youtube_destination():
+    ensure_app_data_dir()
+    with open(runtime_youtube_destination_path, 'w', encoding='utf-8') as f:
+        json.dump(runtime_youtube_destination, f, indent=4)
+        f.write('\n')
+
+def load_runtime_youtube_destination():
+    if not os.path.exists(runtime_youtube_destination_path):
+        return
+
+    try:
+        with open(runtime_youtube_destination_path, encoding='utf-8') as f:
+            payload = json.load(f)
+    except (OSError, json.JSONDecodeError) as e:
+        print(f"Could not load saved YouTube destination: {e}", flush=True)
+        return
+
+    if not isinstance(payload, dict):
+        return
+
+    for key in runtime_youtube_destination:
+        runtime_youtube_destination[key] = payload.get(key)
 
 def config_is_writable():
     return os.access(os.path.dirname(config_path), os.W_OK)
@@ -304,11 +339,17 @@ def youtube_title_for_today(home_team=None, away_team=None):
     return f"{home_team} vs {away_team} - {datetime.now().date().isoformat()}"
 
 def youtube_status_snapshot():
+    active_destination = (
+        dict(runtime_youtube_destination)
+        if runtime_youtube_destination.get('broadcast_id') and runtime_youtube_destination.get('broadcast_status') != 'complete'
+        else {}
+    )
     return {
         'authorized': os.path.exists(google_token_path),
         'oauth_configured': google_client_config() is not None,
         'channel_choices': [],
-        'active_destination': dict(runtime_youtube_destination),
+        'active_destination': active_destination,
+        'can_stop': bool(runtime_youtube_destination.get('broadcast_id') and runtime_youtube_destination.get('broadcast_status') != 'complete'),
         'configured_stream_key': bool(os.getenv('YOUTUBE_STREAM_KEY') or config.get('youtube_stream_key')),
     }
 
@@ -351,6 +392,7 @@ def load_google_credentials():
     return credentials
 
 def save_google_credentials(credentials):
+    ensure_app_data_dir()
     with open(google_token_path, 'w', encoding='utf-8') as f:
         f.write(credentials.to_json())
 
@@ -444,6 +486,7 @@ def create_youtube_broadcast_for_channel(channel_id, home_team=None, away_team=N
     runtime_youtube_destination.update({
         'broadcast_id': broadcast_response.get('id'),
         'broadcast_title': title,
+        'broadcast_status': ((broadcast_response.get('status') or {}).get('lifeCycleStatus')) or 'created',
         'broadcast_url': f"https://www.youtube.com/watch?v={broadcast_response.get('id')}",
         'channel_id': selected_channel['id'],
         'channel_title': selected_channel['title'],
@@ -453,6 +496,7 @@ def create_youtube_broadcast_for_channel(channel_id, home_team=None, away_team=N
     })
 
     if runtime_youtube_destination['stream_key']:
+        save_runtime_youtube_destination()
         if config_is_writable():
             config['youtube_stream_key'] = runtime_youtube_destination['stream_key']
             if runtime_youtube_destination['ingestion_address']:
@@ -467,6 +511,65 @@ def create_youtube_broadcast_for_channel(channel_id, home_team=None, away_team=N
         'channel_id': runtime_youtube_destination['channel_id'],
         'channel_title': runtime_youtube_destination['channel_title'],
     }
+
+def update_active_youtube_broadcast_title(home_team=None, away_team=None):
+    broadcast_id = runtime_youtube_destination.get('broadcast_id')
+    if not broadcast_id or runtime_youtube_destination.get('broadcast_status') == 'complete':
+        return None
+
+    service = youtube_service()
+    response = service.liveBroadcasts().list(
+        part='snippet,status,contentDetails',
+        id=broadcast_id,
+    ).execute()
+    items = response.get('items') or []
+    if not items:
+        raise ValueError('Active YouTube broadcast could not be found')
+
+    item = items[0]
+    title = youtube_title_for_today(home_team=home_team, away_team=away_team)
+    snippet = dict(item.get('snippet') or {})
+    snippet['title'] = title
+
+    updated = service.liveBroadcasts().update(
+        part='snippet,status,contentDetails',
+        body={
+            'id': broadcast_id,
+            'snippet': snippet,
+            'status': item.get('status') or {},
+            'contentDetails': item.get('contentDetails') or {},
+        },
+    ).execute()
+
+    runtime_youtube_destination['broadcast_title'] = title
+    runtime_youtube_destination['broadcast_status'] = ((updated.get('status') or {}).get('lifeCycleStatus')) or runtime_youtube_destination.get('broadcast_status')
+    save_runtime_youtube_destination()
+    return title
+
+def stop_active_youtube_broadcast():
+    broadcast_id = runtime_youtube_destination.get('broadcast_id')
+    if not broadcast_id:
+        raise ValueError('No active YouTube broadcast is available to stop')
+    if runtime_youtube_destination.get('broadcast_status') == 'complete':
+        return dict(runtime_youtube_destination)
+
+    service = youtube_service()
+    transitioned = service.liveBroadcasts().transition(
+        part='status',
+        id=broadcast_id,
+        broadcastStatus='complete',
+    ).execute()
+
+    runtime_youtube_destination['broadcast_status'] = ((transitioned.get('status') or {}).get('lifeCycleStatus')) or 'complete'
+    save_runtime_youtube_destination()
+
+    global relay_ffmpeg_process
+    with process_lock:
+        if relay_ffmpeg_process is not None:
+            stop_process(relay_ffmpeg_process)
+            relay_ffmpeg_process = None
+
+    return dict(runtime_youtube_destination)
 
 def measure_input_audio_level():
     cmd = [
@@ -696,6 +799,8 @@ def apply_overlay_update(data):
     with state_lock:
         previous_mute = state['mute']
         previous_clock_mode = state['clock_mode']
+        previous_home_team = state['home_team']
+        previous_away_team = state['away_team']
         if 'home_score' in data:
             data['home_score'] = normalize_score_value(data['home_score'])
         if 'away_score' in data:
@@ -722,6 +827,23 @@ def apply_overlay_update(data):
                     print("Live volume update failed; keeping FFmpeg running", flush=True)
             else:
                 print("FFmpeg not ready; mute state will apply on next FFmpeg start", flush=True)
+    if (
+        runtime_youtube_destination.get('broadcast_id')
+        and runtime_youtube_destination.get('broadcast_status') != 'complete'
+        and (
+            updated_state['home_team'] != previous_home_team
+            or updated_state['away_team'] != previous_away_team
+        )
+    ):
+        try:
+            updated_title = update_active_youtube_broadcast_title(
+                home_team=updated_state['home_team'],
+                away_team=updated_state['away_team'],
+            )
+            if updated_title:
+                print(f"Updated active YouTube broadcast title to: {updated_title}", flush=True)
+        except Exception as e:
+            print(f"Could not update active YouTube broadcast title: {e}", flush=True)
     write_overlay_text()
     updated_state = current_state_payload()
     socketio.emit('state_updated', updated_state)
@@ -837,6 +959,19 @@ def youtube_create_stream():
 
     return jsonify(created)
 
+@app.route('/api/youtube/stop-stream', methods=['POST'])
+def youtube_stop_stream():
+    try:
+        stopped = stop_active_youtube_broadcast()
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except HttpError as e:
+        return jsonify({'error': f'YouTube API error: {e}'}), 502
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+    return jsonify(stopped)
+
 @app.route('/on_publish', methods=['GET', 'POST'])
 def on_publish():
     raw_data = request.get_data(as_text=True)
@@ -873,6 +1008,8 @@ def handle_update_overlay(data):
     emit('state_updated', updated_state, broadcast=True)
 
 if __name__ == '__main__':
+    ensure_app_data_dir()
+    load_runtime_youtube_destination()
     write_overlay_text()
     threading.Thread(target=monitor_stream, daemon=True).start()
     threading.Thread(target=tick_game_clock, daemon=True).start()

@@ -22,4 +22,5 @@ services:
       - YOUTUBE_STREAM_KEY=${YOUTUBE_STREAM_KEY}
     volumes:
       - ./config:/app/config:ro
+      - ./data:/app/data
     restart: unless-stopped

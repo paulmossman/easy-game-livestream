@@ -66,6 +66,13 @@
             align-content: start;
         }
 
+        .team-top-row {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) 96px;
+            gap: 14px;
+            align-items: center;
+        }
+
         .team-flags {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -210,6 +217,9 @@
             font-size: clamp(1.6rem, 3vw, 2.4rem);
             font-weight: 900;
             letter-spacing: 0.01em;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
 
         .team-heading.right {
@@ -236,6 +246,8 @@
         }
 
         .score-input {
+            min-width: 0;
+            padding: 12px 14px;
             font-size: clamp(2rem, 5vw, 3rem);
             font-weight: 800;
             text-align: center;
@@ -595,11 +607,10 @@
             </section>
 
             <section class="panel team-panel left">
-                <h2 id="home-team-heading" class="team-heading">Home</h2>
-                <label>
-                    Score
+                <div class="team-top-row">
+                    <h2 id="home-team-heading" class="team-heading">Home</h2>
                     <input type="text" id="home-score" class="score-input" value="0" inputmode="numeric">
-                </label>
+                </div>
                 <div class="team-flags">
                     <label class="option-row team-option">
                         <input type="checkbox" id="home-pp">
@@ -614,11 +625,10 @@
             </section>
 
             <section class="panel team-panel right">
-                <h2 id="away-team-heading" class="team-heading right">Away</h2>
-                <label>
-                    Score
+                <div class="team-top-row">
+                    <h2 id="away-team-heading" class="team-heading right">Away</h2>
                     <input type="text" id="away-score" class="score-input" value="0" inputmode="numeric">
-                </label>
+                </div>
                 <div class="team-flags">
                     <label class="option-row team-option">
                         <input type="checkbox" id="away-pp">

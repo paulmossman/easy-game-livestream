@@ -1,6 +1,5 @@
 
 actions:
-  start: docker compose up -d
+  start: docker compose up --build -d
   stop: docker compose down
-  restart: docker compose restart
-  restart-app: docker compose restart app
+  restart: ops stop && ops start

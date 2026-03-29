@@ -40,13 +40,6 @@ function setCreateStreamAvailability(enabled, label) {
     button.classList.toggle('is-disabled', !enabled);
 }
 
-function setStopStreamAvailability(visible, disabled = false) {
-    const button = document.getElementById('stop-stream-button');
-    button.classList.toggle('is-hidden', !visible);
-    button.disabled = disabled;
-    button.classList.toggle('is-disabled', disabled);
-}
-
 function renderYouTubeChannels(channels) {
     const container = document.getElementById('youtube-channel-list');
     container.innerHTML = '';
@@ -92,7 +85,6 @@ function renderYouTubeBroadcastLink(data) {
 
 function renderYouTubeActions(data, canStop = false) {
     renderYouTubeBroadcastLink(data);
-    setStopStreamAvailability(Boolean(data && data.broadcast_url && canStop));
 }
 
 async function loadYouTubeStatus() {
@@ -185,7 +177,6 @@ async function handleCreateStreamClick() {
 
 async function createYouTubeStream(channelId) {
     setYoutubeStatus('Creating stream', 'Asking YouTube to create a brand-new immediate live broadcast.');
-    setStopStreamAvailability(false);
     const formData = currentFormData();
     await postState(formData);
     const response = await fetch('/api/youtube/create-stream', {
@@ -212,29 +203,6 @@ async function createYouTubeStream(channelId) {
     renderYouTubeActions(data, true);
     setYoutubeStatus(data.channel_title || 'YouTube ready', data.title || 'Broadcast created.');
 }
-
-async function stopYouTubeStream() {
-    setYoutubeStatus('Stopping stream', 'Asking YouTube to stop the current live broadcast.');
-    setStopStreamAvailability(true, true);
-
-    const response = await fetch('/api/youtube/stop-stream', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        }
-    });
-    const data = await response.json();
-
-    if (!response.ok) {
-        setYoutubeStatus('Stop failed', data.error || 'YouTube did not accept the stop request.');
-        setStopStreamAvailability(true, false);
-        return;
-    }
-
-    setYoutubeStatus(data.channel_title || 'YouTube stopped', 'The active YouTube broadcast has been stopped.');
-    renderYouTubeActions(data, false);
-}
-
 function meterWidthFromDb(audioDb) {
     if (typeof audioDb !== 'number' || Number.isNaN(audioDb)) {
         return 0;
@@ -398,9 +366,6 @@ async function submitOverlayUpdate(event) {
 
 async function submitTeamNameUpdate() {
     await postState(currentFormData());
-    if (document.getElementById('stop-stream-button').classList.contains('is-hidden')) {
-        return;
-    }
     await loadYouTubeStatus();
 }
 
@@ -516,7 +481,6 @@ document.getElementById('time').addEventListener('input', refreshTeamHeadingsFro
 document.getElementById('mute-on-stop').addEventListener('change', submitOverlayUpdate);
 document.getElementById('mute-toggle-button').addEventListener('click', toggleMute);
 document.getElementById('create-stream-button').addEventListener('click', handleCreateStreamClick);
-document.getElementById('stop-stream-button').addEventListener('click', stopYouTubeStream);
 document.getElementById('home-team').addEventListener('input', refreshTeamHeadingsFromInputs);
 document.getElementById('away-team').addEventListener('input', refreshTeamHeadingsFromInputs);
 document.getElementById('show-video').addEventListener('change', (event) => setPreviewVisibility(event.target.checked));

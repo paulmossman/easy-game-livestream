@@ -853,6 +853,10 @@ def apply_overlay_update(data):
 def index():
     return render_template('index.html')
 
+@app.route('/youtube-stop')
+def youtube_stop_page():
+    return render_template('youtube-stop.html')
+
 @app.route('/api/state', methods=['GET'])
 def get_state():
     return jsonify(current_state_payload())

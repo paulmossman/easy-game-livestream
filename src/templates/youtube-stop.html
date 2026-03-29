@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube Stop Control</title>
+    <style>
+        :root {
+            color-scheme: light;
+            --bg: #f4efe7;
+            --panel: rgba(255, 251, 245, 0.96);
+            --ink: #231915;
+            --line: rgba(35, 25, 21, 0.12);
+            --warn-a: #cf5e35;
+            --warn-b: #ad351f;
+            --safe-a: #46606d;
+            --safe-b: #2b3b45;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            font-family: "Avenir Next", "Helvetica Neue", sans-serif;
+            color: var(--ink);
+            background:
+                radial-gradient(circle at top left, rgba(207, 94, 53, 0.17), transparent 28%),
+                radial-gradient(circle at bottom right, rgba(70, 96, 109, 0.18), transparent 30%),
+                linear-gradient(135deg, #f7f2ea, #e7eceb);
+            display: grid;
+            place-items: center;
+            padding: 24px;
+        }
+
+        .card {
+            width: min(640px, 100%);
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 28px;
+            padding: 28px;
+            box-shadow: 0 24px 70px rgba(35, 25, 21, 0.10);
+            display: grid;
+            gap: 18px;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: clamp(1.8rem, 4vw, 2.6rem);
+            line-height: 1.05;
+        }
+
+        p {
+            margin: 0;
+            line-height: 1.5;
+        }
+
+        .status {
+            padding: 16px 18px;
+            border-radius: 18px;
+            background: rgba(35, 25, 21, 0.05);
+            border: 1px solid rgba(35, 25, 21, 0.06);
+            display: grid;
+            gap: 8px;
+        }
+
+        .status-label {
+            font-size: 0.84rem;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            opacity: 0.72;
+        }
+
+        .status-value {
+            font-size: 1.1rem;
+            font-weight: 700;
+        }
+
+        .actions {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        button,
+        a {
+            border: 0;
+            border-radius: 16px;
+            font-size: 1rem;
+            font-weight: 800;
+            padding: 14px 18px;
+            text-decoration: none;
+        }
+
+        button {
+            background: linear-gradient(135deg, var(--warn-a), var(--warn-b));
+            color: white;
+            cursor: pointer;
+        }
+
+        button:disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
+        }
+
+        a {
+            background: linear-gradient(135deg, var(--safe-a), var(--safe-b));
+            color: white;
+            display: inline-flex;
+            align-items: center;
+        }
+
+        .message {
+            min-height: 1.5em;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <main class="card">
+        <h1>YouTube Stop Control</h1>
+        <p>This page keeps the stop action separate from the main scoreboard controls. Stopping here will end the currently active YouTube broadcast.</p>
+
+        <section class="status">
+            <div class="status-label">Current Broadcast</div>
+            <div id="status-value" class="status-value">Checking YouTube status...</div>
+            <a id="broadcast-link" href="#" target="_blank" rel="noopener noreferrer" hidden>Open current YouTube broadcast</a>
+        </section>
+
+        <div class="actions">
+            <button type="button" id="stop-button" disabled>Stop Stream</button>
+            <a href="/">Back to Main Controls</a>
+        </div>
+
+        <div id="message" class="message"></div>
+    </main>
+
+    <script>
+        async function loadStatus() {
+            const statusValue = document.getElementById('status-value');
+            const stopButton = document.getElementById('stop-button');
+            const broadcastLink = document.getElementById('broadcast-link');
+            const message = document.getElementById('message');
+
+            message.textContent = '';
+
+            const response = await fetch('/api/youtube/status');
+            if (!response.ok) {
+                statusValue.textContent = 'Could not load YouTube status.';
+                stopButton.disabled = true;
+                return;
+            }
+
+            const data = await response.json();
+            const active = data.active_destination;
+
+            if (active && active.broadcast_url && data.can_stop) {
+                statusValue.textContent = active.broadcast_title || 'Active YouTube broadcast';
+                broadcastLink.href = active.broadcast_url;
+                broadcastLink.hidden = false;
+                stopButton.disabled = false;
+                return;
+            }
+
+            statusValue.textContent = 'No active YouTube broadcast is available to stop.';
+            broadcastLink.hidden = true;
+            stopButton.disabled = true;
+        }
+
+        async function stopStream() {
+            const stopButton = document.getElementById('stop-button');
+            const message = document.getElementById('message');
+
+            const confirmed = window.confirm('Stop the active YouTube stream now? This will end the current broadcast.');
+            if (!confirmed) {
+                return;
+            }
+
+            stopButton.disabled = true;
+            message.textContent = 'Stopping YouTube stream...';
+
+            const response = await fetch('/api/youtube/stop-stream', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+            const data = await response.json();
+
+            if (!response.ok) {
+                message.textContent = data.error || 'YouTube did not accept the stop request.';
+                stopButton.disabled = false;
+                return;
+            }
+
+            message.textContent = 'The YouTube broadcast has been stopped.';
+            await loadStatus();
+        }
+
+        document.getElementById('stop-button').addEventListener('click', stopStream);
+        loadStatus();
+    </script>
+</body>
+</html>

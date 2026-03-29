@@ -799,6 +799,8 @@ def apply_overlay_update(data):
     with state_lock:
         previous_mute = state['mute']
         previous_clock_mode = state['clock_mode']
+        previous_period = state['period']
+        previous_time = state['time']
         previous_home_team = state['home_team']
         previous_away_team = state['away_team']
         if 'home_score' in data:
@@ -810,7 +812,13 @@ def apply_overlay_update(data):
         state.update(data)
         if state['clock_mode'] != previous_clock_mode:
             state['clock_running'] = False
-        if state['clock_mode'] == 'run_time' and ('period' in data or 'time' in data):
+        # The UI posts the full form for mute/unmute actions, so `period` and
+        # `time` can be present even when the operator did not edit the clock.
+        # Only stop a running run-time clock when one of those values changed.
+        if state['clock_mode'] == 'run_time' and (
+            ('period' in data and data['period'] != previous_period)
+            or ('time' in data and data['time'] != previous_time)
+        ):
             state['clock_running'] = False
         if 'mute_on_stop' in data and state['clock_mode'] == 'stop_time' and state['mute_on_stop'] and not state['clock_running']:
             state['mute'] = True

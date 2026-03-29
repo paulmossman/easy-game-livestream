@@ -262,20 +262,6 @@
             gap: 16px;
         }
 
-        .preview-header {
-            display: flex;
-            align-items: baseline;
-            justify-content: flex-start;
-        }
-
-        .preview-title {
-            margin: 0;
-            font-size: 1.15rem;
-            font-weight: 900;
-            letter-spacing: 0.04em;
-            text-transform: uppercase;
-        }
-
         .preview-stage {
             position: relative;
             width: 100%;
@@ -422,6 +408,69 @@
             gap: 16px;
         }
 
+        .clock-controls-grid {
+            display: grid;
+            grid-template-columns: minmax(220px, auto) minmax(170px, 220px) minmax(210px, 280px) minmax(210px, 260px);
+            gap: 16px;
+            align-items: start;
+        }
+
+        .field-block {
+            display: grid;
+            gap: 8px;
+            font-size: 0.95rem;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+        }
+
+        .field-label {
+            font-size: 0.95rem;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+        }
+
+        .clock-mode-group {
+            display: inline-flex;
+            gap: 8px;
+            padding: 8px;
+            border: 1px solid var(--line);
+            border-radius: 18px;
+            background: rgba(255, 255, 255, 0.78);
+            width: fit-content;
+            max-width: 100%;
+            flex-wrap: wrap;
+        }
+
+        .clock-mode-option {
+            position: relative;
+        }
+
+        .clock-mode-option input {
+            position: absolute;
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .clock-mode-option span {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 92px;
+            padding: 10px 16px;
+            border-radius: 12px;
+            background: transparent;
+            color: rgba(31, 26, 23, 0.72);
+            font-size: 0.95rem;
+            font-weight: 800;
+            cursor: pointer;
+            transition: background 140ms ease, color 140ms ease;
+        }
+
+        .clock-mode-option input:checked + span {
+            background: linear-gradient(160deg, var(--steel-a), var(--steel-b));
+            color: white;
+        }
+
         .time-control-row {
             display: flex;
             align-items: center;
@@ -429,6 +478,14 @@
         }
 
         .time-control-row input {
+            flex: 1 1 auto;
+        }
+
+        .mute-control-row {
+            min-height: 58px;
+        }
+
+        .mute-control-row .option-main {
             flex: 1 1 auto;
         }
 
@@ -504,6 +561,10 @@
             .toggle-button {
                 min-height: 108px;
             }
+
+            .clock-controls-grid {
+                grid-template-columns: 1fr 1fr;
+            }
         }
 
         @media (max-width: 720px) {
@@ -519,7 +580,8 @@
             }
 
             .shared-grid,
-            .settings-grid {
+            .settings-grid,
+            .clock-controls-grid {
                 grid-template-columns: 1fr;
             }
         }
@@ -571,9 +633,6 @@
             </section>
 
             <section class="panel preview-panel">
-                <div class="preview-header">
-                    <h3 class="preview-title">Preview</h3>
-                </div>
                 <div class="preview-stage">
                     <iframe
                         id="preview-frame"
@@ -596,14 +655,20 @@
             </section>
 
             <section class="panel settings-panel">
-                <label>
-                    Clock Mode
-                    <select id="clock-mode">
-                        <option value="stop_time" selected>Stop time</option>
-                        <option value="run_time">Run time</option>
-                    </select>
-                </label>
-                <div class="settings-grid">
+                <div class="clock-controls-grid">
+                    <div class="field-block">
+                        <div class="field-label">Clock Mode</div>
+                        <div class="clock-mode-group" role="radiogroup" aria-label="Clock Mode">
+                            <label class="clock-mode-option" for="clock-mode-stop-time">
+                                <input type="radio" id="clock-mode-stop-time" name="clock-mode" value="stop_time" checked>
+                                <span>Stop time</span>
+                            </label>
+                            <label class="clock-mode-option" for="clock-mode-run-time">
+                                <input type="radio" id="clock-mode-run-time" name="clock-mode" value="run_time">
+                                <span>Run time</span>
+                            </label>
+                        </div>
+                    </div>
                     <label>
                         Period
                         <select id="period">
@@ -624,13 +689,16 @@
                             <button type="button" id="clock-toggle-button" class="clock-button is-hidden">Start</button>
                         </div>
                     </label>
-                </div>
-                <div class="option-row">
-                    <label class="option-main" for="mute-on-stop">
-                        <input type="checkbox" id="mute-on-stop" checked>
-                        <span>Mute on Stop</span>
-                    </label>
-                    <button type="button" id="mute-toggle-button" class="mute-button is-hidden">Un-mute</button>
+                    <div class="field-block">
+                        <div class="field-label">Audio</div>
+                        <div class="option-row mute-control-row">
+                            <label class="option-main" for="mute-on-stop">
+                                <input type="checkbox" id="mute-on-stop" checked>
+                                <span>Mute on Stop</span>
+                            </label>
+                            <button type="button" id="mute-toggle-button" class="mute-button is-hidden">Un-mute</button>
+                        </div>
+                    </div>
                 </div>
                 <div class="input-audio-panel">
                     <div class="audio-copy">

@@ -251,6 +251,7 @@ function renderOverlayMock(state) {
 }
 
 function currentFormData() {
+    const selectedClockMode = document.querySelector('input[name="clock-mode"]:checked');
     return {
         home_team: document.getElementById('home-team').value,
         home_score: document.getElementById('home-score').value,
@@ -260,7 +261,7 @@ function currentFormData() {
         away_score: document.getElementById('away-score').value,
         away_pp: document.getElementById('away-pp').checked,
         away_en: document.getElementById('away-en').checked,
-        clock_mode: document.getElementById('clock-mode').value,
+        clock_mode: selectedClockMode ? selectedClockMode.value : 'stop_time',
         period: document.getElementById('period').value,
         time: document.getElementById('time').value,
         mute_on_stop: document.getElementById('mute-on-stop').checked
@@ -286,8 +287,9 @@ function renderState(state) {
     syncInputValue('away-score', state.away_score);
     document.getElementById('away-pp').checked = Boolean(state.away_pp);
     document.getElementById('away-en').checked = Boolean(state.away_en);
-    if (document.activeElement !== document.getElementById('clock-mode')) {
-        document.getElementById('clock-mode').value = state.clock_mode || 'stop_time';
+    const selectedClockMode = document.querySelector(`input[name="clock-mode"][value="${state.clock_mode || 'stop_time'}"]`);
+    if (selectedClockMode) {
+        selectedClockMode.checked = true;
     }
     if (document.activeElement !== document.getElementById('period')) {
         document.getElementById('period').value = state.period;
@@ -463,7 +465,9 @@ document.getElementById('home-pp').addEventListener('change', submitOverlayUpdat
 document.getElementById('home-en').addEventListener('change', submitOverlayUpdate);
 document.getElementById('away-pp').addEventListener('change', submitOverlayUpdate);
 document.getElementById('away-en').addEventListener('change', submitOverlayUpdate);
-document.getElementById('clock-mode').addEventListener('change', submitOverlayUpdate);
+document.querySelectorAll('input[name="clock-mode"]').forEach((radio) => {
+    radio.addEventListener('change', submitOverlayUpdate);
+});
 document.getElementById('home-team').addEventListener('blur', submitTeamNameUpdate);
 document.getElementById('away-team').addEventListener('blur', submitTeamNameUpdate);
 document.getElementById('home-score').addEventListener('blur', submitOverlayUpdate);

@@ -2,6 +2,7 @@ const socket = io();
 let youtubeChannels = [];
 let latestState = {};
 const youtubeCreatePendingKey = 'youtube-create-pending';
+const youtubeStatusPollIntervalMs = 30000;
 
 function previewUrl() {
     const query = new URLSearchParams({
@@ -31,6 +32,45 @@ function initializePreviewPlayer() {
 function setYoutubeStatus(title, detail) {
     document.getElementById('youtube-status').textContent = title;
     document.getElementById('youtube-detail').textContent = detail;
+}
+
+function setYouTubeLiveMeta(text = '') {
+    const meta = document.getElementById('youtube-live-meta');
+    const hasText = Boolean(text);
+    meta.textContent = text;
+    meta.classList.toggle('is-hidden', !hasText);
+}
+
+function formatViewerCount(viewers) {
+    if (typeof viewers !== 'number' || Number.isNaN(viewers)) {
+        return '';
+    }
+    return `${new Intl.NumberFormat().format(viewers)} live viewer${viewers === 1 ? '' : 's'}`;
+}
+
+function youtubeLiveMetaText(activeDestination) {
+    if (!activeDestination) {
+        return '';
+    }
+
+    const liveStatus = activeDestination.life_cycle_status || activeDestination.broadcast_status || '';
+    const viewerCountText = formatViewerCount(activeDestination.concurrent_viewers);
+    if (liveStatus === 'live') {
+        return viewerCountText ? `Live now · ${viewerCountText}` : 'Live now';
+    }
+    if (liveStatus === 'testing' || liveStatus === 'testStarting') {
+        return 'YouTube preview/test mode';
+    }
+    if (liveStatus === 'liveStarting') {
+        return 'Starting on YouTube';
+    }
+    if (liveStatus === 'ready' || liveStatus === 'created') {
+        return 'Created on YouTube, waiting to go live';
+    }
+    if (liveStatus === 'complete') {
+        return 'YouTube stream ended';
+    }
+    return liveStatus ? `YouTube status: ${liveStatus}` : '';
 }
 
 function setCreateStreamAvailability(enabled, label) {
@@ -101,6 +141,7 @@ async function loadYouTubeStatus() {
     if (!oauthConfigured) {
         setCreateStreamAvailability(false, 'Create New Stream Unavailable');
         setYoutubeStatus('Manual YouTube Studio mode', 'This app can publish with a reusable stream key, but browser-created YouTube streams are disabled until Google OAuth is configured.');
+        setYouTubeLiveMeta('');
         renderYouTubeChannels([]);
         renderYouTubeActions(null, false);
         return;
@@ -110,6 +151,7 @@ async function loadYouTubeStatus() {
 
     if (!data.authorized) {
         setYoutubeStatus('Not connected', data.authorization_error || 'Sign in to YouTube before creating a stream.');
+        setYouTubeLiveMeta('');
         renderYouTubeChannels([]);
         renderYouTubeActions(null, false);
         return;
@@ -121,6 +163,7 @@ async function loadYouTubeStatus() {
             data.active_destination.channel_title || 'Connected',
             data.active_destination.broadcast_title || 'Current YouTube broadcast is ready.'
         );
+        setYouTubeLiveMeta(youtubeLiveMetaText(data.active_destination));
         renderYouTubeActions(data.active_destination, Boolean(data.can_stop));
     } else if (youtubeChannels.length > 0) {
         if (await maybeAutoCreateYouTubeStream()) {
@@ -133,9 +176,11 @@ async function loadYouTubeStatus() {
         } else {
             setYoutubeStatus('Choose a channel', 'Select which YouTube channel should receive the new stream.');
         }
+        setYouTubeLiveMeta('');
         renderYouTubeActions(null, false);
     } else {
         setYoutubeStatus('Connected', 'No YouTube channels were returned for this login.');
+        setYouTubeLiveMeta('');
         renderYouTubeActions(null, false);
     }
 
@@ -512,3 +557,4 @@ socket.on('state_updated', renderState);
 initializePreviewPlayer();
 loadInitialState();
 loadYouTubeStatus();
+window.setInterval(loadYouTubeStatus, youtubeStatusPollIntervalMs);

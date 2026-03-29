@@ -359,6 +359,47 @@ def youtube_status_snapshot():
         'configured_stream_key': bool(os.getenv('YOUTUBE_STREAM_KEY') or config.get('youtube_stream_key')),
     }
 
+def active_youtube_broadcast_runtime_status(service):
+    broadcast_id = runtime_youtube_destination.get('broadcast_id')
+    if not broadcast_id or runtime_youtube_destination.get('broadcast_status') == 'complete':
+        return {}
+
+    broadcast_response = service.liveBroadcasts().list(
+        part='status',
+        id=broadcast_id,
+    ).execute()
+    broadcast_items = broadcast_response.get('items') or []
+    if not broadcast_items:
+        return {
+            'life_cycle_status': 'missing',
+            'is_live': False,
+            'concurrent_viewers': None,
+        }
+
+    life_cycle_status = ((broadcast_items[0].get('status') or {}).get('lifeCycleStatus')) or runtime_youtube_destination.get('broadcast_status')
+
+    video_response = service.videos().list(
+        part='liveStreamingDetails',
+        id=broadcast_id,
+    ).execute()
+    video_items = video_response.get('items') or []
+    live_streaming_details = (video_items[0].get('liveStreamingDetails') or {}) if video_items else {}
+    concurrent_viewers = live_streaming_details.get('concurrentViewers')
+
+    try:
+        concurrent_viewers = int(concurrent_viewers) if concurrent_viewers is not None else None
+    except (TypeError, ValueError):
+        concurrent_viewers = None
+
+    runtime_youtube_destination['broadcast_status'] = life_cycle_status
+    save_runtime_youtube_destination()
+
+    return {
+        'life_cycle_status': life_cycle_status,
+        'is_live': life_cycle_status == 'live',
+        'concurrent_viewers': concurrent_viewers,
+    }
+
 def google_client_config():
     config_client_id = config.get('google_oauth_client_id')
     config_client_secret = config.get('google_oauth_client_secret')
@@ -891,6 +932,8 @@ def youtube_status():
         service = youtube_service()
         snapshot['authorized'] = True
         snapshot['channel_choices'] = youtube_channel_choices(service)
+        if snapshot['active_destination']:
+            snapshot['active_destination'].update(active_youtube_broadcast_runtime_status(service))
     except Exception as e:
         snapshot['authorized'] = False
         snapshot['authorization_error'] = str(e)

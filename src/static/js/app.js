@@ -327,8 +327,6 @@ function renderState(state) {
     renderOverlayMock(state);
 
     const toggleButton = document.getElementById('start-stop-button');
-    const incomingAudioLabel = document.getElementById('incoming-audio-label');
-    const incomingAudioMeter = document.getElementById('incoming-audio-meter');
     const muteOnStop = document.getElementById('mute-on-stop');
     const muteToggleButton = document.getElementById('mute-toggle-button');
     const clockToggleButton = document.getElementById('clock-toggle-button');
@@ -337,9 +335,6 @@ function renderState(state) {
     const isMuted = Boolean(state.mute);
 
     muteOnStop.checked = Boolean(state.mute_on_stop);
-    incomingAudioLabel.textContent = state.incoming_audio_label || 'Waiting for stream';
-    incomingAudioMeter.style.width = `${meterWidthFromDb(state.incoming_audio_db)}%`;
-    incomingAudioMeter.classList.toggle('is-silent', !state.incoming_audio_active);
     clockToggleButton.textContent = clockRunning ? 'Stop' : 'Start';
     clockToggleButton.classList.toggle('stopped', !clockRunning);
     clockToggleButton.classList.toggle('is-hidden', clockMode !== 'run_time');

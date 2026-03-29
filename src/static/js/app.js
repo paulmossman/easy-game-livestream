@@ -241,10 +241,10 @@ function teamHeadingDisplay(teamName, ppEnabled, enEnabled, isRightSide) {
     }
 
     if (isRightSide) {
-        return `${flags.length ? `${flags.join(' ')} ` : ''}${safeTeamName}`;
+        return `${flags.length ? `${flags.join(' ')} ` : ''}${safeTeamName}:`;
     }
 
-    return `${safeTeamName}${flags.length ? ` ${flags.join(' ')}` : ''}`;
+    return `${safeTeamName}:${flags.length ? ` ${flags.join(' ')}` : ''}`;
 }
 
 function renderOverlayMock(state) {

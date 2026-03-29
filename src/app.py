@@ -4,6 +4,7 @@ import json
 import re
 import threading
 import time
+import tempfile
 from datetime import datetime, timezone
 import urllib.error
 import urllib.parse
@@ -162,8 +163,13 @@ def current_overlay_text():
     }
 
 def write_text_file(path, text):
-    with open(path, 'w', encoding='utf-8') as text_file:
+    directory = os.path.dirname(path) or '.'
+    with tempfile.NamedTemporaryFile('w', encoding='utf-8', dir=directory, delete=False) as text_file:
         text_file.write(text)
+        temp_path = text_file.name
+    # FFmpeg reloads these overlay files while it is running. Replace them
+    # atomically so it never sees a truncated file mid-read.
+    os.replace(temp_path, path)
 
 def overlay_signature(overlay_text):
     return (

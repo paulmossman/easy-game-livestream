@@ -230,6 +230,23 @@ function teamDisplay(teamName, score, ppEnabled, enEnabled, isRightSide) {
     return `${safeTeamName}: ${safeScore}${flags.length ? ` ${flags.join(' ')}` : ''}`;
 }
 
+function teamHeadingDisplay(teamName, ppEnabled, enEnabled, isRightSide) {
+    const safeTeamName = teamName && String(teamName).trim() ? String(teamName).trim() : (isRightSide ? 'Away' : 'Home');
+    const flags = [];
+    if (ppEnabled) {
+        flags.push('PP');
+    }
+    if (enEnabled) {
+        flags.push('EN');
+    }
+
+    if (isRightSide) {
+        return `${flags.length ? `${flags.join(' ')} ` : ''}${safeTeamName}`;
+    }
+
+    return `${safeTeamName}${flags.length ? ` ${flags.join(' ')}` : ''}`;
+}
+
 function renderOverlayMock(state) {
     document.getElementById('overlay-home-text').textContent = teamDisplay(
         state.home_team,
@@ -295,16 +312,14 @@ function renderState(state) {
         document.getElementById('period').value = state.period;
     }
     syncInputValue('time', state.time);
-    document.getElementById('home-team-heading').textContent = teamDisplay(
+    document.getElementById('home-team-heading').textContent = teamHeadingDisplay(
         document.getElementById('home-team').value,
-        document.getElementById('home-score').value,
         state.home_pp,
         state.home_en,
         false
     );
-    document.getElementById('away-team-heading').textContent = teamDisplay(
+    document.getElementById('away-team-heading').textContent = teamHeadingDisplay(
         document.getElementById('away-team').value,
-        document.getElementById('away-score').value,
         state.away_pp,
         state.away_en,
         true
@@ -440,16 +455,14 @@ async function loadInitialState() {
 }
 
 function refreshTeamHeadingsFromInputs() {
-    document.getElementById('home-team-heading').textContent = teamDisplay(
+    document.getElementById('home-team-heading').textContent = teamHeadingDisplay(
         document.getElementById('home-team').value,
-        document.getElementById('home-score').value,
         document.getElementById('home-pp').checked,
         document.getElementById('home-en').checked,
         false
     );
-    document.getElementById('away-team-heading').textContent = teamDisplay(
+    document.getElementById('away-team-heading').textContent = teamHeadingDisplay(
         document.getElementById('away-team').value,
-        document.getElementById('away-score').value,
         document.getElementById('away-pp').checked,
         document.getElementById('away-en').checked,
         true

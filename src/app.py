@@ -154,11 +154,18 @@ def current_overlay_text():
     away_flags = ' '.join(flag for flag, enabled in [('PP', state['away_pp']), ('EN', state['away_en'])] if enabled)
     home_display = f"{state['home_team']}: {state['home_score']}" + (f" {home_flags}" if home_flags else '')
     away_display = ((f"{away_flags} " if away_flags else '') + f"{state['away_team']}: {state['away_score']}")
+    period_text = state['period']
+    time_text = state['time']
+
+    if period_text in ('Final', 'Shootout'):
+        time_text = period_text
+        period_text = ''
+
     return {
         'home': home_display,
         'away': away_display,
-        'period': state['period'],
-        'time': state['time'],
+        'period': period_text,
+        'time': time_text,
         'mute': 'MUTED' if state['mute'] else '',
     }
 

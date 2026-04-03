@@ -293,6 +293,11 @@ function teamHeadingDisplay(teamName, ppEnabled, enEnabled, isRightSide) {
 }
 
 function renderOverlayMock(state) {
+    const isClockIrrelevant = state.period === 'Final' || state.period === 'Shootout';
+    const timeText = isClockIrrelevant ? state.period : state.time;
+    const periodText = isClockIrrelevant ? '' : state.period;
+    const timeElement = document.getElementById('overlay-time-text');
+    const periodElement = document.getElementById('overlay-period-text');
     document.getElementById('overlay-home-text').textContent = teamDisplay(
         state.home_team,
         state.home_score,
@@ -307,8 +312,10 @@ function renderOverlayMock(state) {
         state.away_en,
         true
     );
-    document.getElementById('overlay-time-text').textContent = state.time;
-    document.getElementById('overlay-period-text').textContent = state.period;
+    timeElement.textContent = timeText;
+    timeElement.classList.toggle('is-hidden', !timeText);
+    periodElement.textContent = periodText;
+    periodElement.classList.toggle('is-hidden', !periodText);
     document.getElementById('overlay-mute-icon').classList.toggle('is-hidden', !state.mute);
 }
 

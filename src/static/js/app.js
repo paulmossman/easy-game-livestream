@@ -554,6 +554,19 @@ function refreshTeamHeadingsFromInputs() {
     );
 }
 
+async function commitTimeInput(event) {
+    normalizeClockInput();
+    await submitOverlayUpdate(event);
+}
+
+async function handleTimeInputKeydown(event) {
+    if (event.key !== 'Enter') {
+        return;
+    }
+
+    await commitTimeInput(event);
+}
+
 document.getElementById('overlay-form').addEventListener('submit', submitOverlayUpdate);
 document.getElementById('start-stop-button').addEventListener('click', togglePrimaryAction);
 document.getElementById('clock-toggle-button').addEventListener('click', toggleClockRunning);
@@ -571,10 +584,8 @@ document.getElementById('away-team').addEventListener('blur', submitTeamNameUpda
 document.getElementById('home-score').addEventListener('blur', submitOverlayUpdate);
 document.getElementById('away-score').addEventListener('blur', submitOverlayUpdate);
 document.getElementById('period').addEventListener('change', submitOverlayUpdate);
-document.getElementById('time').addEventListener('blur', async (event) => {
-    normalizeClockInput();
-    await submitOverlayUpdate(event);
-});
+document.getElementById('time').addEventListener('blur', commitTimeInput);
+document.getElementById('time').addEventListener('keydown', handleTimeInputKeydown);
 document.getElementById('home-score').addEventListener('input', refreshTeamHeadingsFromInputs);
 document.getElementById('away-score').addEventListener('input', refreshTeamHeadingsFromInputs);
 document.getElementById('home-pp').addEventListener('change', refreshTeamHeadingsFromInputs);

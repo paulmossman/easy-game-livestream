@@ -1,10 +1,12 @@
 const socket = io();
 let youtubeChannels = [];
 let latestState = {};
+let previewHls = null;
 const youtubeCreatePendingKey = 'youtube-create-pending';
 const youtubeStatusPollIntervalMs = 30000;
+const previewModeStorageKey = 'preview-mode';
 
-function previewUrl() {
+function webrtcPreviewUrl() {
     const query = new URLSearchParams({
         controls: 'yes',
         muted: 'yes',
@@ -14,8 +16,65 @@ function previewUrl() {
     return `${window.location.protocol}//${window.location.hostname}:8889/live/preview/?${query.toString()}`;
 }
 
+function hlsPreviewUrl() {
+    return `${window.location.protocol}//${window.location.hostname}:8888/live/preview_hls/index.m3u8`;
+}
+
+function previewMode() {
+    const selected = document.querySelector('input[name="preview-mode"]:checked');
+    return selected ? selected.value : 'webrtc';
+}
+
+function teardownHlsPreview() {
+    const previewVideo = document.getElementById('preview-video');
+    if (previewHls) {
+        previewHls.destroy();
+        previewHls = null;
+    }
+    previewVideo.pause();
+    previewVideo.removeAttribute('src');
+    previewVideo.load();
+}
+
+function initializeHlsPreview() {
+    const previewVideo = document.getElementById('preview-video');
+    const sourceUrl = hlsPreviewUrl();
+
+    teardownHlsPreview();
+
+    if (window.Hls && window.Hls.isSupported()) {
+        previewHls = new window.Hls();
+        previewHls.loadSource(sourceUrl);
+        previewHls.attachMedia(previewVideo);
+        return;
+    }
+
+    previewVideo.src = sourceUrl;
+}
+
+function applyPreviewSource() {
+    const previewFrame = document.getElementById('preview-frame');
+    const previewVideo = document.getElementById('preview-video');
+    const mode = previewMode();
+
+    if (mode === 'hls') {
+        previewFrame.src = 'about:blank';
+        previewFrame.classList.add('is-hidden');
+        previewVideo.classList.remove('is-hidden');
+        initializeHlsPreview();
+    } else {
+        teardownHlsPreview();
+        previewVideo.classList.add('is-hidden');
+        previewFrame.classList.remove('is-hidden');
+        previewFrame.src = webrtcPreviewUrl();
+    }
+}
+
 function setPreviewVisibility(showVideo) {
-    document.getElementById('preview-frame').classList.toggle('is-hidden', !showVideo);
+    const mode = previewMode();
+    document.querySelector('.preview-mode-group').classList.toggle('is-hidden', !showVideo);
+    document.getElementById('preview-frame').classList.toggle('is-hidden', !showVideo || mode !== 'webrtc');
+    document.getElementById('preview-video').classList.toggle('is-hidden', !showVideo || mode !== 'hls');
     document.getElementById('overlay-mock').classList.toggle('is-hidden', showVideo);
 }
 
@@ -35,7 +94,20 @@ function initializePreviewPlayer() {
         return;
     }
 
-    previewFrame.src = previewUrl();
+    const savedMode = window.localStorage.getItem(previewModeStorageKey);
+    const selectedMode = savedMode === 'hls' ? 'hls' : 'webrtc';
+    const selectedRadio = document.querySelector(`input[name="preview-mode"][value="${selectedMode}"]`);
+    if (selectedRadio) {
+        selectedRadio.checked = true;
+    }
+
+    applyPreviewSource();
+    setPreviewVisibility(document.getElementById('show-video').checked);
+}
+
+function handlePreviewModeChange(event) {
+    window.localStorage.setItem(previewModeStorageKey, event.target.value);
+    applyPreviewSource();
     setPreviewVisibility(document.getElementById('show-video').checked);
 }
 
@@ -608,6 +680,9 @@ document.getElementById('create-stream-button').addEventListener('click', handle
 document.getElementById('home-team').addEventListener('input', refreshTeamHeadingsFromInputs);
 document.getElementById('away-team').addEventListener('input', refreshTeamHeadingsFromInputs);
 document.getElementById('show-video').addEventListener('change', (event) => setPreviewVisibility(event.target.checked));
+document.querySelectorAll('input[name="preview-mode"]').forEach((radio) => {
+    radio.addEventListener('change', handlePreviewModeChange);
+});
 document.addEventListener('keydown', handleGlobalKeypress);
 window.addEventListener('message', (event) => {
     if (event.origin !== window.location.origin) {

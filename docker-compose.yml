@@ -6,6 +6,10 @@ services:
       - "8888:8888"
       - "8889:8889"
       - "8189:8189/udp"
+      - "8189:8189/tcp"
+    environment:
+      - MTX_WEBRTCADDITIONALHOSTS=${MTX_WEBRTCADDITIONALHOSTS:-}
+      - MTX_WEBRTCLOCALTCPADDRESS=${MTX_WEBRTCLOCALTCPADDRESS:-:8189}
     volumes:
       - ./mediamtx.yml:/mediamtx.yml:ro
     command: ["/mediamtx.yml"]

@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Easy Game Livestream Control</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
     <style>
         :root {
             color-scheme: light;
@@ -305,11 +306,58 @@
             box-shadow: 0 12px 30px rgba(0, 0, 0, 0.12);
         }
 
+        .preview-options {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .preview-mode-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            flex: 1 1 320px;
+        }
+
+        .preview-mode-option {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 14px;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.7);
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .preview-mode-option input[type="radio"] {
+            width: 18px;
+            height: 18px;
+            margin: 0;
+        }
+
+        .preview-mode-option span {
+            line-height: 1.2;
+        }
+
+        .preview-toggle-row {
+            justify-content: flex-start;
+            flex: 0 0 auto;
+        }
+
         .preview-frame,
+        .preview-video,
         .overlay-mock {
             width: 100%;
             height: 100%;
             border: 0;
+        }
+
+        .preview-video {
+            display: block;
+            background: #12181d;
         }
 
         .overlay-mock {
@@ -672,6 +720,14 @@
                         title="Live preview"
                         allow="autoplay; fullscreen; picture-in-picture"
                     ></iframe>
+                    <video
+                        id="preview-video"
+                        class="preview-video is-hidden"
+                        muted
+                        autoplay
+                        playsinline
+                        controls
+                    ></video>
                     <div id="overlay-mock" class="overlay-mock is-hidden" aria-hidden="true">
                         <div id="overlay-home-text" class="overlay-chip home">Home: 0</div>
                         <div id="overlay-away-text" class="overlay-chip away">Away: 0</div>
@@ -680,10 +736,22 @@
                         <div id="overlay-mute-icon" class="overlay-mute is-hidden">MUTED</div>
                     </div>
                 </div>
-                <label class="option-row">
-                    <input type="checkbox" id="show-video" checked>
-                    <span>Show video</span>
-                </label>
+                <div class="preview-options">
+                    <label class="option-row preview-toggle-row">
+                        <input type="checkbox" id="show-video" checked>
+                        <span>Show video</span>
+                    </label>
+                    <div class="preview-mode-group" role="radiogroup" aria-label="Preview mode">
+                        <label class="preview-mode-option" for="preview-mode-webrtc">
+                            <input type="radio" id="preview-mode-webrtc" name="preview-mode" value="webrtc" checked>
+                            <span>WebRTC</span>
+                        </label>
+                        <label class="preview-mode-option" for="preview-mode-hls">
+                            <input type="radio" id="preview-mode-hls" name="preview-mode" value="hls">
+                            <span>HLS</span>
+                        </label>
+                    </div>
+                </div>
             </section>
 
             <section class="panel settings-panel">

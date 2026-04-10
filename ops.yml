@@ -1,5 +1,10 @@
 
 actions:
-  start: docker compose up --build -d
-  stop: docker compose down
-  restart: ops stop && ops start
+  start:
+    command: |-
+      chmod +x ./bin/start_with_lan_ips.sh
+      ./bin/start_with_lan_ips.sh
+  stop:
+    command: docker compose down
+  restart:
+    command: ops stop && ops start

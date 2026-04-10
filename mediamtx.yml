@@ -1,5 +1,6 @@
 api: yes
 apiAddress: :9997
+webrtcLocalTCPAddress: :8189
 authInternalUsers:
   - user: any
     pass:

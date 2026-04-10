@@ -293,6 +293,18 @@
             background: #12181d;
         }
 
+        .preview-warning {
+            padding: 12px 16px;
+            border-radius: 16px;
+            background: rgba(184, 64, 41, 0.92);
+            color: white;
+            font-size: 0.95rem;
+            font-weight: 900;
+            letter-spacing: 0.01em;
+            line-height: 1.25;
+            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.12);
+        }
+
         .preview-frame,
         .overlay-mock {
             width: 100%;
@@ -652,6 +664,7 @@
             </section>
 
             <section class="panel preview-panel">
+                <div id="preview-audio-warning" class="preview-warning is-hidden">Warning: no audio in incoming stream</div>
                 <div class="preview-stage">
                     <iframe
                         id="preview-frame"
@@ -747,6 +760,6 @@
 
         </form>
     </div>
-    <script src="/static/js/app.js?v=20260327n"></script>
+    <script src="/static/js/app.js?v=20260405a"></script>
 </body>
 </html>

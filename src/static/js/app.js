@@ -19,6 +19,16 @@ function setPreviewVisibility(showVideo) {
     document.getElementById('overlay-mock').classList.toggle('is-hidden', showVideo);
 }
 
+function updatePreviewAudioWarning(state) {
+    const warning = document.getElementById('preview-audio-warning');
+    if (!warning) {
+        return;
+    }
+
+    const shouldWarn = Boolean(state.incoming_stream_ready) && !Boolean(state.incoming_audio_active);
+    warning.classList.toggle('is-hidden', !shouldWarn);
+}
+
 function initializePreviewPlayer() {
     const previewFrame = document.getElementById('preview-frame');
     if (!previewFrame) {
@@ -348,6 +358,7 @@ function syncInputValue(id, value) {
 
 function renderState(state) {
     latestState = state;
+    updatePreviewAudioWarning(state);
     syncInputValue('home-team', state.home_team);
     syncInputValue('home-score', state.home_score);
     document.getElementById('home-pp').checked = Boolean(state.home_pp);

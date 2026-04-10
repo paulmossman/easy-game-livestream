@@ -46,6 +46,7 @@ state = {
     'incoming_audio_db': None,
     'incoming_audio_label': 'Waiting for stream',
     'incoming_audio_active': False,
+    'incoming_stream_ready': False,
 }
 ffmpeg_process = None
 relay_ffmpeg_process = None
@@ -830,8 +831,14 @@ def run_ffmpeg():
         cleanup_ffmpeg()
 
 def monitor_stream():
+    last_ready = None
     while True:
         ready = is_stream_ready()
+        if ready != last_ready:
+            with state_lock:
+                state['incoming_stream_ready'] = ready
+            socketio.emit('state_updated', current_state_payload())
+            last_ready = ready
         with process_lock:
             running = is_ffmpeg_running()
             if ready and not running:

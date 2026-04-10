@@ -86,6 +86,8 @@ runtime_youtube_destination = {
     'stream_key': None,
     'ingestion_address': None,
 }
+inactive_youtube_broadcast_statuses = {'complete', 'deleted'}
+deletable_youtube_broadcast_statuses = {'created', 'ready'}
 primary_font_path = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'
 overlay_home_text_path = '/tmp/overlay-home.txt'
 overlay_away_text_path = '/tmp/overlay-away.txt'
@@ -318,7 +320,7 @@ def current_webrtc_preview_output_url():
 
 def current_upstream_output_url():
     if runtime_youtube_destination.get('broadcast_id'):
-        if runtime_youtube_destination.get('broadcast_status') == 'complete':
+        if runtime_youtube_destination.get('broadcast_status') in inactive_youtube_broadcast_statuses:
             return ''
         output_base = runtime_youtube_destination['ingestion_address'] or config.get('youtube_output_url') or ''
         output_key = runtime_youtube_destination['stream_key'] or ''
@@ -371,7 +373,7 @@ def youtube_title_for_today(home_team=None, away_team=None):
 def youtube_status_snapshot():
     active_destination = (
         dict(runtime_youtube_destination)
-        if runtime_youtube_destination.get('broadcast_id') and runtime_youtube_destination.get('broadcast_status') != 'complete'
+        if runtime_youtube_destination.get('broadcast_id') and runtime_youtube_destination.get('broadcast_status') not in inactive_youtube_broadcast_statuses
         else {}
     )
     return {
@@ -379,13 +381,13 @@ def youtube_status_snapshot():
         'oauth_configured': google_client_config() is not None,
         'channel_choices': [],
         'active_destination': active_destination,
-        'can_stop': bool(runtime_youtube_destination.get('broadcast_id') and runtime_youtube_destination.get('broadcast_status') != 'complete'),
+        'can_stop': bool(runtime_youtube_destination.get('broadcast_id') and runtime_youtube_destination.get('broadcast_status') not in inactive_youtube_broadcast_statuses),
         'configured_stream_key': bool(os.getenv('YOUTUBE_STREAM_KEY') or config.get('youtube_stream_key')),
     }
 
 def active_youtube_broadcast_runtime_status(service):
     broadcast_id = runtime_youtube_destination.get('broadcast_id')
-    if not broadcast_id or runtime_youtube_destination.get('broadcast_status') == 'complete':
+    if not broadcast_id or runtime_youtube_destination.get('broadcast_status') in inactive_youtube_broadcast_statuses:
         return {}
 
     broadcast_response = service.liveBroadcasts().list(
@@ -585,7 +587,7 @@ def create_youtube_broadcast_for_channel(channel_id, home_team=None, away_team=N
 
 def update_active_youtube_broadcast_title(home_team=None, away_team=None):
     broadcast_id = runtime_youtube_destination.get('broadcast_id')
-    if not broadcast_id or runtime_youtube_destination.get('broadcast_status') == 'complete':
+    if not broadcast_id or runtime_youtube_destination.get('broadcast_status') in inactive_youtube_broadcast_statuses:
         return None
 
     service = youtube_service()
@@ -617,14 +619,48 @@ def update_active_youtube_broadcast_title(home_team=None, away_team=None):
     save_runtime_youtube_destination()
     return title
 
+def stop_relay_ffmpeg():
+    global relay_ffmpeg_process
+    with process_lock:
+        if relay_ffmpeg_process is not None:
+            stop_process(relay_ffmpeg_process)
+            relay_ffmpeg_process = None
+
+def current_youtube_broadcast_status(service, broadcast_id):
+    response = service.liveBroadcasts().list(
+        part='status',
+        id=broadcast_id,
+    ).execute()
+    items = response.get('items') or []
+    if not items:
+        return 'deleted'
+    return ((items[0].get('status') or {}).get('lifeCycleStatus')) or runtime_youtube_destination.get('broadcast_status')
+
 def stop_active_youtube_broadcast():
     broadcast_id = runtime_youtube_destination.get('broadcast_id')
     if not broadcast_id:
         raise ValueError('No active YouTube broadcast is available to stop')
-    if runtime_youtube_destination.get('broadcast_status') == 'complete':
+    if runtime_youtube_destination.get('broadcast_status') in inactive_youtube_broadcast_statuses:
         return dict(runtime_youtube_destination)
 
     service = youtube_service()
+    current_status = current_youtube_broadcast_status(service, broadcast_id)
+
+    if current_status in deletable_youtube_broadcast_statuses:
+        service.liveBroadcasts().delete(
+            id=broadcast_id,
+        ).execute()
+        runtime_youtube_destination['broadcast_status'] = 'deleted'
+        save_runtime_youtube_destination()
+        stop_relay_ffmpeg()
+        return dict(runtime_youtube_destination)
+
+    if current_status in inactive_youtube_broadcast_statuses:
+        runtime_youtube_destination['broadcast_status'] = current_status
+        save_runtime_youtube_destination()
+        stop_relay_ffmpeg()
+        return dict(runtime_youtube_destination)
+
     transitioned = service.liveBroadcasts().transition(
         part='status',
         id=broadcast_id,
@@ -633,12 +669,7 @@ def stop_active_youtube_broadcast():
 
     runtime_youtube_destination['broadcast_status'] = ((transitioned.get('status') or {}).get('lifeCycleStatus')) or 'complete'
     save_runtime_youtube_destination()
-
-    global relay_ffmpeg_process
-    with process_lock:
-        if relay_ffmpeg_process is not None:
-            stop_process(relay_ffmpeg_process)
-            relay_ffmpeg_process = None
+    stop_relay_ffmpeg()
 
     return dict(runtime_youtube_destination)
 
@@ -912,7 +943,7 @@ def apply_overlay_update(data):
                 print("FFmpeg not ready; mute state will apply on next FFmpeg start", flush=True)
     if (
         runtime_youtube_destination.get('broadcast_id')
-        and runtime_youtube_destination.get('broadcast_status') != 'complete'
+        and runtime_youtube_destination.get('broadcast_status') not in inactive_youtube_broadcast_statuses
         and (
             updated_state['home_team'] != previous_home_team
             or updated_state['away_team'] != previous_away_team

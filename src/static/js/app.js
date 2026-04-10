@@ -560,11 +560,19 @@ async function commitTimeInput(event) {
 }
 
 async function handleTimeInputKeydown(event) {
-    if (event.key !== 'Enter') {
+    if (event.key === 'Enter') {
+        event.preventDefault();
+        event.stopPropagation();
+        event.target.blur();
         return;
     }
 
-    await commitTimeInput(event);
+    if (event.key === 'Escape' || event.key === 'Esc') {
+        event.preventDefault();
+        event.stopPropagation();
+        event.target.value = latestState.time || '';
+        event.target.blur();
+    }
 }
 
 document.getElementById('overlay-form').addEventListener('submit', submitOverlayUpdate);

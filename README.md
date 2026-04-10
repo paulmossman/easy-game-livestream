@@ -2,6 +2,10 @@
 
 Layer game score, time, etc onto an RTMP livestream.
 
+At this point "easy" is a goal, not the reality. It should work on macOS, and maybe even Linux. But there's a bash script, which won't work seamlessly on Windows.
+
+The `ops.yml` is for the [Crystal Ops (crops) tool](https://github.com/nickthecook/crops), which is very helpful but not required.
+
 ## Setup
 
 1. Set your YouTube stream key in `config/config.json` or as environment variable `YOUTUBE_STREAM_KEY`.

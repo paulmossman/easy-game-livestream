@@ -214,21 +214,37 @@ def normalize_score_value(value):
     except (TypeError, ValueError):
         return '0'
 
-def parse_clock(clock_text):
+def normalize_clock_value(value):
+    text = str(value or '').strip()
+    if not text:
+        return ''
     try:
-        minutes_text, seconds_text = str(clock_text).split(':', 1)
-        minutes = int(minutes_text)
-        seconds = int(seconds_text)
+        if ':' in text:
+            minutes_text, seconds_text = text.split(':', 1)
+        else:
+            minutes_text, seconds_text = text, '00'
+        minutes = int(minutes_text or '0')
+        seconds = int(seconds_text or '0')
         if minutes < 0 or seconds < 0 or seconds > 59:
             raise ValueError
-        return (minutes * 60) + seconds
+        return f"{minutes}:{seconds:02d}"
+    except (TypeError, ValueError):
+        return text
+
+def parse_clock(clock_text):
+    normalized_clock = normalize_clock_value(clock_text)
+    if not normalized_clock:
+        return None
+    try:
+        minutes_text, seconds_text = normalized_clock.split(':', 1)
+        return (int(minutes_text) * 60) + int(seconds_text)
     except (ValueError, AttributeError):
         return None
 
 def format_clock(total_seconds):
     total_seconds = max(0, int(total_seconds))
     minutes, seconds = divmod(total_seconds, 60)
-    return f"{minutes:02d}:{seconds:02d}"
+    return f"{minutes}:{seconds:02d}"
 
 def current_volume_level():
     return muted_volume_level if state['mute'] else normal_volume_level
@@ -866,6 +882,8 @@ def apply_overlay_update(data):
             data['home_score'] = normalize_score_value(data['home_score'])
         if 'away_score' in data:
             data['away_score'] = normalize_score_value(data['away_score'])
+        if 'time' in data:
+            data['time'] = normalize_clock_value(data['time'])
         if 'clock_mode' in data and data['clock_mode'] not in ('stop_time', 'run_time'):
             data['clock_mode'] = 'stop_time'
         state.update(data)

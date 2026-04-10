@@ -342,9 +342,36 @@ function currentFormData() {
         away_en: document.getElementById('away-en').checked,
         clock_mode: selectedClockMode ? selectedClockMode.value : 'stop_time',
         period: document.getElementById('period').value,
-        time: document.getElementById('time').value,
+        time: normalizeClockValue(document.getElementById('time').value),
         mute_on_stop: document.getElementById('mute-on-stop').checked
     };
+}
+
+function normalizeClockValue(value) {
+    const text = String(value || '').trim();
+    if (!text) {
+        return '';
+    }
+
+    const [minutesText, secondsText = '00'] = text.includes(':') ? text.split(':', 2) : [text, '00'];
+    const minutes = Number.parseInt(minutesText || '0', 10);
+    const seconds = Number.parseInt(secondsText || '0', 10);
+    if (
+        Number.isNaN(minutes) ||
+        Number.isNaN(seconds) ||
+        minutes < 0 ||
+        seconds < 0 ||
+        seconds > 59
+    ) {
+        return text;
+    }
+
+    return `${minutes}:${String(seconds).padStart(2, '0')}`;
+}
+
+function normalizeClockInput() {
+    const timeField = document.getElementById('time');
+    timeField.value = normalizeClockValue(timeField.value);
 }
 
 function syncInputValue(id, value) {
@@ -544,7 +571,10 @@ document.getElementById('away-team').addEventListener('blur', submitTeamNameUpda
 document.getElementById('home-score').addEventListener('blur', submitOverlayUpdate);
 document.getElementById('away-score').addEventListener('blur', submitOverlayUpdate);
 document.getElementById('period').addEventListener('change', submitOverlayUpdate);
-document.getElementById('time').addEventListener('blur', submitOverlayUpdate);
+document.getElementById('time').addEventListener('blur', async (event) => {
+    normalizeClockInput();
+    await submitOverlayUpdate(event);
+});
 document.getElementById('home-score').addEventListener('input', refreshTeamHeadingsFromInputs);
 document.getElementById('away-score').addEventListener('input', refreshTeamHeadingsFromInputs);
 document.getElementById('home-pp').addEventListener('change', refreshTeamHeadingsFromInputs);

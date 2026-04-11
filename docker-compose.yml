@@ -1,6 +1,6 @@
 services:
   mediamtx:
-    image: bluenviron/mediamtx:latest
+    image: bluenviron/mediamtx:v1.16.3@sha256:9e39256d1ba35f0063700c6f62dd32e6db4592ddd9560d78f409ec451d79b1d8
     ports:
       - "1935:1935"
       - "8888:8888"

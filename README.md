@@ -6,6 +6,12 @@ At this point "easy" is a goal, not the reality. It should work on macOS, and ma
 
 The `ops.yml` is for the [Crystal Ops (crops) tool](https://github.com/nickthecook/crops), which is very helpful but not required.
 
+## Demo
+
+Demo of the console doing a simulated game livestream: https://www.youtube.com/watch?v=jjHv_qa3Pkk
+
+The YouTube livestream that the demo produced (with much audio muted): https://www.youtube.com/live/Agm8VVVv4U4
+
 ## Setup
 
 1. Set your YouTube stream key in `config/config.json` or as environment variable `YOUTUBE_STREAM_KEY`.

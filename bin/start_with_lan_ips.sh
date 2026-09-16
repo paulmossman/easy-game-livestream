@@ -5,11 +5,11 @@ set -euo pipefail
 lan_ips_csv=""
 
 if command -v ip >/dev/null 2>&1; then
-   lan_ips_csv="$(
-      ip -o -4 addr show up scope global \
-      | awk '{split($4, a, "/"); print a[1]}'
-      | paste -sd, -
-   )"
+  lan_ips_csv="$(
+    ip -o -4 addr show up 2>/dev/null \
+    | awk '{split($4, a, "/"); if (a[1] != "" && a[1] != "127.0.0.1") print a[1]}' \
+    | paste -sd, -
+  )"
 elif command -v ifconfig >/dev/null 2>&1; then
    lan_ips_csv="$(
       ifconfig \

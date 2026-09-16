@@ -1,3 +1,6 @@
+dependencies:
+  brew:
+    - iproute2mac
 
 actions:
   start:

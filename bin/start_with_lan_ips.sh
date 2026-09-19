@@ -42,10 +42,11 @@ fi
 export MTX_WEBRTCADDITIONALHOSTS="${lan_ips_csv}"
 export MTX_WEBRTCLOCALTCPADDRESS=":8189"
 
+docker compose up --build -d
+
 if [[ -n "${MTX_WEBRTCADDITIONALHOSTS}" ]]; then
    echo "MediaMTX WebRTC additional hosts: ${MTX_WEBRTCADDITIONALHOSTS}"
 else
    echo "MediaMTX WebRTC additional hosts: none detected"
 fi
 
-docker compose up --build -d

@@ -299,7 +299,7 @@ def tick_game_clock():
         socketio.emit('state_updated', current_state_payload())
 
 def current_input_url():
-    return f"{config.get('rtmp_input_url', 'rtmp://mediamtx/live')}/{config.get('stream_name', 'stream')}"
+    return 'rtmp://mediamtx/live/egl'
 
 def build_rtmp_url(base_url, stream_key):
     if not stream_key:

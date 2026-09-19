@@ -14,11 +14,11 @@ The YouTube livestream that the demo produced (with much audio muted): https://w
 
 ## Setup
 
-1. Set your YouTube stream key in `config/config.json` or as environment variable `YOUTUBE_STREAM_KEY`.
-2. Run `docker-compose up --build`
-3. Open http://localhost:5001 for control interface.
-4. Configure PRISM Live Studio on iPhone to stream to `rtmp://<Docker-Host>:1935/live` with stream key set to the value in `config/config.json` (currently "bogus")
-5. Open a local preview of the overlaid stream at `http://<Docker-Host>:8889/live/preview/?muted=no` for lower-latency WebRTC playback with audio, or `http://<Docker-Host>:8888/live/preview_hls/index.m3u8` for HLS playback. WebRTC requires UDP port `8189` to be reachable, and also the app to be configured with the IP(s) at which it's reachable (via `MTX_WEBRTCADDITIONALHOSTS` env var.)
+1. Run `ops start` (or `./bin/start_with_lan_ips.sh`.)
+2. Open http://localhost:5001 for control interface.
+3. Configure PRISM Live Studio to stream to `rtmp://<Docker Host IP>:1935/live` with stream key set to `egl`.
+
+4. Open a local preview of the overlaid stream at `http://<Docker-Host>:8889/live/preview/?muted=no` for lower-latency WebRTC playback with audio, or `http://<Docker-Host>:8888/live/preview_hls/index.m3u8` for HLS playback. WebRTC requires UDP port `8189` to be reachable, and also the app to be configured with the IP(s) at which it's reachable (via `MTX_WEBRTCADDITIONALHOSTS` env var.).
 
 ## YouTube Studio Flow
 
@@ -27,7 +27,7 @@ Use this when you want the app to publish to YouTube with the configured stream 
 1. Open [YouTube Studio](https://studio.youtube.com/).
 2. Click `Create`, then `Go live`.
 3. If YouTube asks whether you want to stream right now or schedule for later, choose the option that gets you into Live Control Room for a stream.
-4. In Live Control Room, confirm the selected stream key matches the one in `config/config.json`.
+4. In Live Control Room, confirm the selected stream key is `egl`.
 5. Set the stream title in YouTube Studio. A good format is `<Home Team> vs <Away Team> - YYYY-MM-DD`.
 6. Set the visibility, audience, and any other YouTube options you care about.
 7. Leave that YouTube Live Control Room page open.
@@ -36,7 +36,7 @@ Use this when you want the app to publish to YouTube with the configured stream 
 10. Wait for YouTube Studio to show that it is receiving the stream.
 11. In YouTube Studio, click `Go live` when you are ready for the broadcast to be public.
 
-This manual flow does not require a Google login inside the app. The app only needs the reusable `youtube_stream_key` in `config/config.json`.
+This manual flow does not require a Google login inside the app. The app expects PRISM to publish to the fixed RTMP path `/live/egl`.
 
 ## Optional Google Login Flow
 

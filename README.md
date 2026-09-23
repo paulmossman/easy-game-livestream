@@ -70,7 +70,7 @@ Use these steps only if you want to try the optional `Create New Stream` flow in
 17. Download the OAuth client JSON file from Google Cloud.
 18. Save that downloaded JSON file as:
     - `config/google_oauth_client_secret.json`
-9. Under `Data Access`, add the following YouTube Scopes:
+9. Under `Data Access` → `Manually add scopes`, add the following YouTube Scopes:
    - https://www.googleapis.com/auth/youtube
    - https://www.googleapis.com/auth/youtube.force-ssl
 1. Under `Audience` → Test users → + Add users, add yourself.

@@ -274,12 +274,30 @@ def update_live_volume():
     command = f'{audio_control_target} -1 volume {current_volume_level()}'
     return send_ffmpeg_stdin_command(command)
 
+def sync_mute_state(previous_mute):
+    if state['mute'] == previous_mute:
+        return True
+
+    with process_lock:
+        if is_ffmpeg_running() and ffmpeg_ready:
+            if update_live_volume():
+                return True
+            print("Live volume update failed; reverting mute state", flush=True)
+            with state_lock:
+                state['mute'] = previous_mute
+            return False
+
+        print("FFmpeg not ready; mute state will apply on next FFmpeg start", flush=True)
+        return True
+
 def tick_game_clock():
     while True:
         time.sleep(1)
+        previous_mute = None
         with state_lock:
             if not state['clock_running']:
                 continue
+            previous_mute = state['mute']
             remaining_seconds = parse_clock(state['time'])
             if remaining_seconds is None:
                 continue
@@ -295,6 +313,7 @@ def tick_game_clock():
                     if state['clock_mode'] == 'stop_time' and state['mute_on_stop']:
                         state['mute'] = True
                 updated_state = current_state_payload()
+            sync_mute_state(previous_mute)
         write_overlay_text()
         socketio.emit('state_updated', current_state_payload())
 
@@ -935,12 +954,7 @@ def apply_overlay_update(data):
         updated_state = current_state_payload()
     print("Updating overlay with data:", data, flush=True)
     if updated_state['mute'] != previous_mute:
-        with process_lock:
-            if is_ffmpeg_running() and ffmpeg_ready:
-                if not update_live_volume():
-                    print("Live volume update failed; keeping FFmpeg running", flush=True)
-            else:
-                print("FFmpeg not ready; mute state will apply on next FFmpeg start", flush=True)
+        sync_mute_state(previous_mute)
     if (
         runtime_youtube_destination.get('broadcast_id')
         and runtime_youtube_destination.get('broadcast_status') not in inactive_youtube_broadcast_statuses

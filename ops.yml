@@ -11,3 +11,7 @@ actions:
     command: docker compose down
   restart:
     command: ops stop && ops start
+  ip-list:
+    command: ip -o -4 addr show up
+    aliases:
+      - ips

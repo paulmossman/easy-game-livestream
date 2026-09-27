@@ -320,6 +320,20 @@
             flex: 0 1 auto;
         }
 
+        .preview-host-option {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .preview-host-option select {
+            width: auto;
+            max-width: min(100%, 320px);
+            padding: 10px 12px;
+            border-radius: 8px;
+            font-size: 0.95rem;
+        }
+
         .preview-mode-option {
             display: inline-flex;
             align-items: center;
@@ -717,6 +731,7 @@
                     <iframe
                         id="preview-frame"
                         class="preview-frame"
+                        data-webrtc-additional-hosts="{{ webrtc_additional_hosts }}"
                         title="Live preview"
                         allow="autoplay; fullscreen; picture-in-picture"
                     ></iframe>
@@ -740,6 +755,10 @@
                     <label class="option-row preview-toggle-row">
                         <input type="checkbox" id="show-video" checked>
                         <span>Show video</span>
+                    </label>
+                    <label class="preview-host-option" id="preview-host-group" for="preview-host-select">
+                        <span>WebRTC host</span>
+                        <select id="preview-host-select" aria-label="WebRTC host"></select>
                     </label>
                     <div class="preview-mode-group" role="radiogroup" aria-label="Preview mode">
                         <label class="preview-mode-option" for="preview-mode-webrtc">

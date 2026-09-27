@@ -5,15 +5,18 @@ let previewHls = null;
 const youtubeCreatePendingKey = 'youtube-create-pending';
 const youtubeStatusPollIntervalMs = 30000;
 const previewModeStorageKey = 'preview-mode';
+const previewHostStorageKey = 'webrtc-preview-host';
 
 function webrtcPreviewUrl() {
+    const selectedHost = document.getElementById('preview-host-select').value;
+    const previewHost = selectedHost === 'page' ? window.location.hostname : selectedHost;
     const query = new URLSearchParams({
         controls: 'yes',
         muted: 'yes',
         autoplay: 'yes',
         playsinline: 'yes'
     });
-    return `${window.location.protocol}//${window.location.hostname}:8889/live/preview/?${query.toString()}`;
+    return `${window.location.protocol}//${previewHost}:8889/live/preview/?${query.toString()}`;
 }
 
 function hlsPreviewUrl() {
@@ -73,6 +76,7 @@ function applyPreviewSource() {
 function setPreviewVisibility(showVideo) {
     const mode = previewMode();
     document.querySelector('.preview-mode-group').classList.toggle('is-hidden', !showVideo);
+    document.getElementById('preview-host-group').classList.toggle('is-hidden', !showVideo || mode !== 'webrtc');
     document.getElementById('preview-frame').classList.toggle('is-hidden', !showVideo || mode !== 'webrtc');
     document.getElementById('preview-video').classList.toggle('is-hidden', !showVideo || mode !== 'hls');
     document.getElementById('overlay-mock').classList.toggle('is-hidden', showVideo);
@@ -94,6 +98,8 @@ function initializePreviewPlayer() {
         return;
     }
 
+    initializePreviewHostOptions();
+
     const savedMode = window.localStorage.getItem(previewModeStorageKey);
     const selectedMode = savedMode === 'hls' ? 'hls' : 'webrtc';
     const selectedRadio = document.querySelector(`input[name="preview-mode"][value="${selectedMode}"]`);
@@ -103,6 +109,39 @@ function initializePreviewPlayer() {
 
     applyPreviewSource();
     setPreviewVisibility(document.getElementById('show-video').checked);
+}
+
+function initializePreviewHostOptions() {
+    const previewFrame = document.getElementById('preview-frame');
+    const hostSelect = document.getElementById('preview-host-select');
+    const pageHostOption = document.createElement('option');
+    pageHostOption.value = 'page';
+    pageHostOption.textContent = `${window.location.hostname} (can fail under VPN)`;
+    hostSelect.append(pageHostOption);
+
+    const additionalHosts = previewFrame.dataset.webrtcAdditionalHosts
+        .split(',')
+        .map((host) => host.trim())
+        .filter((host, index, hosts) => host && hosts.indexOf(host) === index);
+    additionalHosts.forEach((host) => {
+        const option = document.createElement('option');
+        option.value = host;
+        option.textContent = host;
+        hostSelect.append(option);
+    });
+
+    const savedHost = window.localStorage.getItem(previewHostStorageKey);
+    hostSelect.value = [...hostSelect.options].some((option) => option.value === savedHost)
+        ? savedHost
+        : 'page';
+    hostSelect.addEventListener('change', handlePreviewHostChange);
+}
+
+function handlePreviewHostChange(event) {
+    window.localStorage.setItem(previewHostStorageKey, event.target.value);
+    if (previewMode() === 'webrtc') {
+        document.getElementById('preview-frame').src = webrtcPreviewUrl();
+    }
 }
 
 function handlePreviewModeChange(event) {

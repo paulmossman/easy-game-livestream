@@ -24,6 +24,7 @@ services:
       - mediamtx
     environment:
       - FLASK_ENV=development
+      - MTX_WEBRTCADDITIONALHOSTS=${MTX_WEBRTCADDITIONALHOSTS:-}
     volumes:
       - ./config:/app/config:ro
       - ./data:/app/data

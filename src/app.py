@@ -979,7 +979,7 @@ def apply_overlay_update(data):
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    return render_template('index.html', webrtc_additional_hosts=os.getenv('MTX_WEBRTCADDITIONALHOSTS', ''))
 
 @app.route('/youtube-stop')
 def youtube_stop_page():

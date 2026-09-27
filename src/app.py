@@ -26,14 +26,16 @@ if os.path.exists(config_path):
 else:
     config = {}
 
+team_name_start_values = config.get('web_ui_start_values', {}).get('team_names', {})
+
 os.environ.setdefault('OAUTHLIB_INSECURE_TRANSPORT', '1')
 
 state = {
-    'home_team': 'Home',
+    'home_team': team_name_start_values.get('left') or 'Home',
     'home_score': '0',
     'home_pp': False,
     'home_en': False,
-    'away_team': 'Away',
+    'away_team': team_name_start_values.get('right') or 'Away',
     'away_score': '0',
     'away_pp': False,
     'away_en': False,

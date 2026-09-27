@@ -361,6 +361,55 @@
             flex: 0 0 auto;
         }
 
+        .advanced-button,
+        .preview-dialog-close {
+            padding: 12px 16px;
+            border: 1px solid var(--line);
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.78);
+            color: var(--ink);
+            font: inherit;
+            font-weight: 800;
+            cursor: pointer;
+        }
+
+        .preview-settings-dialog {
+            width: min(480px, calc(100vw - 32px));
+            max-height: min(80vh, 640px);
+            padding: 24px;
+            border: 1px solid var(--line);
+            border-radius: 20px;
+            color: var(--ink);
+            background: #fffdf8;
+            box-shadow: 0 24px 80px rgba(31, 26, 23, 0.24);
+        }
+
+        .preview-settings-dialog::backdrop {
+            background: rgba(18, 24, 29, 0.48);
+            backdrop-filter: blur(3px);
+        }
+
+        .preview-dialog-content {
+            display: grid;
+            gap: 18px;
+        }
+
+        .preview-dialog-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+        }
+
+        .preview-dialog-header h2 {
+            margin: 0;
+            font-size: 1.25rem;
+        }
+
+        .preview-dialog-close {
+            padding: 8px 12px;
+        }
+
         .preview-frame,
         .preview-video,
         .overlay-mock {
@@ -756,21 +805,30 @@
                         <input type="checkbox" id="show-video" checked>
                         <span>Show video</span>
                     </label>
-                    <label class="preview-host-option" id="preview-host-group" for="preview-host-select">
-                        <span>WebRTC host</span>
-                        <select id="preview-host-select" aria-label="WebRTC host"></select>
-                    </label>
-                    <div class="preview-mode-group" role="radiogroup" aria-label="Preview mode">
-                        <label class="preview-mode-option" for="preview-mode-webrtc">
-                            <input type="radio" id="preview-mode-webrtc" name="preview-mode" value="webrtc" checked>
-                            <span>WebRTC</span>
-                        </label>
-                        <label class="preview-mode-option" for="preview-mode-hls">
-                            <input type="radio" id="preview-mode-hls" name="preview-mode" value="hls">
-                            <span>HLS</span>
-                        </label>
-                    </div>
+                    <button type="button" id="preview-advanced-button" class="advanced-button">Advanced ⚙️</button>
                 </div>
+                <dialog id="preview-settings-dialog" class="preview-settings-dialog" aria-labelledby="preview-dialog-title">
+                    <div class="preview-dialog-content">
+                        <div class="preview-dialog-header">
+                            <h2 id="preview-dialog-title">Livestream viewer advanced ⚙️</h2>
+                            <button type="button" id="preview-dialog-close" class="preview-dialog-close" aria-label="Close preview settings">Close</button>
+                        </div>
+                        <label class="preview-host-option" id="preview-host-group" for="preview-host-select">
+                            <span>WebRTC host</span>
+                            <select id="preview-host-select" aria-label="WebRTC host"></select>
+                        </label>
+                        <div class="preview-mode-group" role="radiogroup" aria-label="Preview mode">
+                            <label class="preview-mode-option" for="preview-mode-webrtc">
+                                <input type="radio" id="preview-mode-webrtc" name="preview-mode" value="webrtc" checked>
+                                <span>WebRTC</span>
+                            </label>
+                            <label class="preview-mode-option" for="preview-mode-hls">
+                                <input type="radio" id="preview-mode-hls" name="preview-mode" value="hls">
+                                <span>HLS</span>
+                            </label>
+                        </div>
+                    </div>
+                </dialog>
             </section>
 
             <section class="panel settings-panel">

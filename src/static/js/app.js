@@ -75,8 +75,7 @@ function applyPreviewSource() {
 
 function setPreviewVisibility(showVideo) {
     const mode = previewMode();
-    document.querySelector('.preview-mode-group').classList.toggle('is-hidden', !showVideo);
-    document.getElementById('preview-host-group').classList.toggle('is-hidden', !showVideo || mode !== 'webrtc');
+    document.getElementById('preview-host-group').classList.toggle('is-hidden', mode !== 'webrtc');
     document.getElementById('preview-frame').classList.toggle('is-hidden', !showVideo || mode !== 'webrtc');
     document.getElementById('preview-video').classList.toggle('is-hidden', !showVideo || mode !== 'hls');
     document.getElementById('overlay-mock').classList.toggle('is-hidden', showVideo);
@@ -719,6 +718,12 @@ document.getElementById('create-stream-button').addEventListener('click', handle
 document.getElementById('home-team').addEventListener('input', refreshTeamHeadingsFromInputs);
 document.getElementById('away-team').addEventListener('input', refreshTeamHeadingsFromInputs);
 document.getElementById('show-video').addEventListener('change', (event) => setPreviewVisibility(event.target.checked));
+document.getElementById('preview-advanced-button').addEventListener('click', () => {
+    document.getElementById('preview-settings-dialog').showModal();
+});
+document.getElementById('preview-dialog-close').addEventListener('click', () => {
+    document.getElementById('preview-settings-dialog').close();
+});
 document.querySelectorAll('input[name="preview-mode"]').forEach((radio) => {
     radio.addEventListener('change', handlePreviewModeChange);
 });

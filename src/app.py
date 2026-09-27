@@ -27,6 +27,10 @@ else:
     config = {}
 
 team_name_start_values = config.get('web_ui_start_values', {}).get('team_names', {})
+clock_start_values = config.get('web_ui_start_values', {}).get('clock', {})
+clock_mode_start_value = config.get('clock_mode', 'stop_time')
+if 'run_time' in clock_start_values:
+    clock_mode_start_value = 'run_time' if clock_start_values['run_time'] else 'stop_time'
 
 os.environ.setdefault('OAUTHLIB_INSECURE_TRANSPORT', '1')
 
@@ -39,12 +43,12 @@ state = {
     'away_score': '0',
     'away_pp': False,
     'away_en': False,
-    'clock_mode': config.get('clock_mode', 'stop_time'),
+    'clock_mode': clock_mode_start_value,
     'clock_running': False,
-    'period': 'Period 1',
-    'time': '20:00',
-    'mute': False,
-    'mute_on_stop': True,
+    'period': clock_start_values.get('Period') or 'Period 1',
+    'time': clock_start_values.get('Time') or '20:00',
+    'mute': clock_start_values.get('muted', False),
+    'mute_on_stop': clock_start_values.get('mute_on_stop', True),
     'incoming_audio_db': None,
     'incoming_audio_label': 'Waiting for stream',
     'incoming_audio_active': False,

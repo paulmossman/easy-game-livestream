@@ -839,9 +839,9 @@ def run_ffmpeg():
         write_overlay_text(force=True)
         filter_complex = ';'.join([
             f"[0:v]drawtext=fontfile={primary_font_path}:textfile={overlay_home_text_path}:reload=1:fontcolor=white:fontsize=38:box=1:boxcolor=black@0.69:boxborderw=18:x=18:y=18[v_home]",
-            f"[v_home]drawtext=fontfile={primary_font_path}:textfile={overlay_away_text_path}:reload=1:fontcolor=white:fontsize=38:box=1:boxcolor=black@0.69:boxborderw=18:x=w-tw-36:y=18[v_away]",
+            f"[v_home]drawtext=fontfile={primary_font_path}:textfile={overlay_away_text_path}:reload=1:fontcolor=white:fontsize=38:box=1:boxcolor=black@0.69:boxborderw=18:x=w-tw-18:y=18[v_away]",
             f"[v_away]drawtext=fontfile={primary_font_path}:textfile={overlay_time_text_path}:reload=1:fontcolor=white:fontsize=44:box=1:boxcolor=black@0.69:boxborderw=18:x=(w-tw)/2:y=18[v_time]",
-            f"[v_time]drawtext=fontfile={primary_font_path}:textfile={overlay_period_text_path}:reload=1:fontcolor=white:fontsize=32:box=1:boxcolor=black@0.69:boxborderw=18:x=18:y=h-th-36[v_period]",
+            f"[v_time]drawtext=fontfile={primary_font_path}:textfile={overlay_period_text_path}:reload=1:fontcolor=white:fontsize=32:box=1:boxcolor=black@0.69:boxborderw=18:x=18:y=h-th-18[v_period]",
             f"[v_period]drawtext=fontfile={primary_font_path}:textfile={overlay_mute_text_path}:reload=1:fontcolor=white@0.76:fontsize=38:x=w-tw-34:y=h-th-72[v_composited]",
             '[v_composited]split=2[v_preview][v_webrtc]',
             f'[0:a]{audio_control_target}=volume={current_volume_level()},asplit=2[a_preview][a_webrtc]',

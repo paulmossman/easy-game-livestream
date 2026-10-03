@@ -551,6 +551,8 @@ function renderState(state) {
         toggleButton.classList.add('is-hidden');
     }
 
+    updatePrimaryActionKeypressIndicator();
+
     muteToggleButton.textContent = isMuted ? 'Un-mute' : 'Mute';
     muteToggleButton.classList.toggle('is-hidden', Boolean(state.mute_on_stop));
 }
@@ -620,18 +622,28 @@ async function toggleMute() {
     });
 }
 
-async function handleGlobalKeypress(event) {
+function canHandleGlobalKeypress(event) {
     if (event.metaKey || event.ctrlKey || event.altKey) {
-        return;
+        return false;
     }
 
     const activeTag = document.activeElement ? document.activeElement.tagName : '';
     const isEditable = activeTag === 'INPUT' || activeTag === 'TEXTAREA' || activeTag === 'SELECT';
     if (isEditable) {
-        return;
+        return false;
     }
 
-    if (document.getElementById('start-stop-button').classList.contains('is-hidden')) {
+    return !document.getElementById('start-stop-button').classList.contains('is-hidden');
+}
+
+function updatePrimaryActionKeypressIndicator(event) {
+    const toggleButton = document.getElementById('start-stop-button');
+    toggleButton.classList.toggle('keypress-ready', canHandleGlobalKeypress(event || window.event || {}));
+}
+
+async function handleGlobalKeypress(event) {
+    if (!canHandleGlobalKeypress(event)) {
+        updatePrimaryActionKeypressIndicator(event);
         return;
     }
 
@@ -728,6 +740,11 @@ document.querySelectorAll('input[name="preview-mode"]').forEach((radio) => {
     radio.addEventListener('change', handlePreviewModeChange);
 });
 document.addEventListener('keydown', handleGlobalKeypress);
+document.addEventListener('focusin', updatePrimaryActionKeypressIndicator);
+document.addEventListener('focusout', updatePrimaryActionKeypressIndicator);
+document.addEventListener('keyup', updatePrimaryActionKeypressIndicator);
+window.addEventListener('blur', updatePrimaryActionKeypressIndicator);
+updatePrimaryActionKeypressIndicator();
 window.addEventListener('message', (event) => {
     if (event.origin !== window.location.origin) {
         return;

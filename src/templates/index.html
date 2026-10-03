@@ -219,7 +219,6 @@
 
         .toggle-panel {
             grid-area: toggle;
-            overflow: hidden;
         }
 
         .team-heading {
@@ -670,6 +669,11 @@
             cursor: pointer;
             transition: transform 120ms ease, background 200ms ease;
             background: linear-gradient(160deg, var(--green-a), var(--green-b));
+        }
+
+        .toggle-button.keypress-ready {
+            outline: 5px solid #168cff;
+            outline-offset: 5px;
         }
 
         .toggle-button.stopped {

@@ -620,7 +620,10 @@ async function adjustClockTime(secondsDelta) {
     const match = /^(\d+):([0-5]\d)$/.exec(normalizeClockValue(timeField.value));
     if (!match) {
         normalizeClockInput();
-        await postState(currentFormData());
+        await postState({
+            ...currentFormData(),
+            clock_running: Boolean(latestState.clock_running)
+        });
         return;
     }
 
@@ -629,7 +632,10 @@ async function adjustClockTime(secondsDelta) {
     const minutes = Math.floor(adjustedSeconds / 60);
     const seconds = adjustedSeconds % 60;
     timeField.value = `${minutes}:${String(seconds).padStart(2, '0')}`;
-    await postState(currentFormData());
+    await postState({
+        ...currentFormData(),
+        clock_running: Boolean(latestState.clock_running)
+    });
 }
 
 async function toggleMute() {

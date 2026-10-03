@@ -554,9 +554,24 @@
 
         .clock-controls-grid {
             display: grid;
-            grid-template-columns: minmax(220px, auto) minmax(170px, 220px) minmax(210px, 280px) minmax(210px, 260px);
-            gap: 16px;
-            align-items: start;
+            grid-template-columns: minmax(200px, 0.3fr) minmax(200px, 0.4fr) minmax(250px, 1.25fr) minmax(210px, 1fr);
+            gap: 12px;
+            align-items: end;
+        }
+
+        .clock-mode-controls {
+            display: flex;
+            align-items: end;
+            gap: 10px;
+            min-width: 0;
+        }
+
+        .clock-mode-controls .field-block {
+            min-width: 0;
+        }
+
+        .clock-mode-controls .clock-button {
+            flex: 0 0 auto;
         }
 
         .field-block {
@@ -616,17 +631,38 @@
         }
 
         .time-control-row {
-            display: flex;
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) 48px 48px;
             align-items: center;
-            gap: 12px;
+            gap: 6px;
         }
 
         .time-control-row input {
-            flex: 1 1 auto;
+            min-width: 0;
+        }
+
+        .time-adjust-button {
+            flex: 0 0 48px;
+            width: 48px;
+            height: 48px;
+            padding: 0;
+            border: 0;
+            border-radius: 12px;
+            background: linear-gradient(160deg, var(--steel-a), var(--steel-b));
+            color: white;
+            font-size: 1.5rem;
+            font-weight: 900;
+            cursor: pointer;
+        }
+
+        .time-adjust-button:focus-visible {
+            outline: none;
         }
 
         .mute-control-row {
-            min-height: 58px;
+            min-height: 0;
+            gap: 8px;
+            padding: 8px 10px;
         }
 
         .mute-control-row .option-main {
@@ -634,8 +670,8 @@
         }
 
         .mute-button {
-            padding: 16px 20px;
-            font-size: 1rem;
+            padding: 10px 12px;
+            font-size: 0.9rem;
             flex: 0 0 auto;
         }
 
@@ -652,6 +688,12 @@
             font-size: 0.98rem;
             font-weight: 900;
             background: linear-gradient(160deg, var(--green-a), var(--green-b));
+        }
+
+        #clock-toggle-button {
+            margin: 0 0 1px;
+            padding: 12px 14px;
+            white-space: nowrap;
         }
 
         .clock-button.stopped {
@@ -712,7 +754,7 @@
             }
 
             .clock-controls-grid {
-                grid-template-columns: 1fr 1fr;
+                grid-template-columns: minmax(72px, 0.42fr) minmax(180px, 0.325fr);
             }
         }
 
@@ -730,6 +772,10 @@
 
             .shared-grid,
             .settings-grid,
+            .clock-controls-grid {
+                grid-template-columns: 1fr;
+            }
+
             .clock-controls-grid {
                 grid-template-columns: 1fr;
             }
@@ -838,19 +884,6 @@
 
             <section class="panel settings-panel">
                 <div class="clock-controls-grid">
-                    <div class="field-block">
-                        <div class="field-label">Clock Mode</div>
-                        <div class="clock-mode-group" role="radiogroup" aria-label="Clock Mode">
-                            <label class="clock-mode-option" for="clock-mode-stop-time">
-                                <input type="radio" id="clock-mode-stop-time" name="clock-mode" value="stop_time" checked>
-                                <span>Stop time</span>
-                            </label>
-                            <label class="clock-mode-option" for="clock-mode-run-time">
-                                <input type="radio" id="clock-mode-run-time" name="clock-mode" value="run_time">
-                                <span>Run time</span>
-                            </label>
-                        </div>
-                    </div>
                     <label>
                         Period
                         <select id="period">
@@ -868,10 +901,27 @@
                         Time
                         <div class="time-control-row">
                             <input type="text" id="time" value="20:00">
-                            <button type="button" id="clock-toggle-button" class="clock-button is-hidden">Start</button>
+                            <button type="button" id="time-increment" class="time-adjust-button" aria-label="Increase time by one second">+</button>
+                            <button type="button" id="time-decrement" class="time-adjust-button" aria-label="Decrease time by one second">-</button>
                         </div>
                     </label>
-                    <div class="field-block">
+                    <div class="clock-mode-controls">
+                        <div class="field-block">
+                            <div class="field-label">Clock Mode</div>
+                            <div class="clock-mode-group" role="radiogroup" aria-label="Clock Mode">
+                                <label class="clock-mode-option" for="clock-mode-stop-time">
+                                    <input type="radio" id="clock-mode-stop-time" name="clock-mode" value="stop_time" checked>
+                                    <span>Stop time</span>
+                                </label>
+                                <label class="clock-mode-option" for="clock-mode-run-time">
+                                    <input type="radio" id="clock-mode-run-time" name="clock-mode" value="run_time">
+                                    <span>Run time</span>
+                                </label>
+                            </div>
+                        </div>
+                        <button type="button" id="clock-toggle-button" class="clock-button is-hidden">Start</button>
+                    </div>
+                    <div class="field-block clock-audio-controls">
                         <div class="field-label">Audio</div>
                         <div class="option-row mute-control-row">
                             <label class="option-main" for="mute-on-stop">
@@ -910,6 +960,6 @@
 
         </form>
     </div>
-    <script src="/static/js/app.js?v=20260405a"></script>
+    <script src="/static/js/app.js?v=20261003a"></script>
 </body>
 </html>

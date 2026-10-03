@@ -615,6 +615,23 @@ async function incrementScore(scoreFieldId) {
     await postState(currentFormData());
 }
 
+async function adjustClockTime(secondsDelta) {
+    const timeField = document.getElementById('time');
+    const match = /^(\d+):([0-5]\d)$/.exec(normalizeClockValue(timeField.value));
+    if (!match) {
+        normalizeClockInput();
+        await postState(currentFormData());
+        return;
+    }
+
+    const currentSeconds = (Number.parseInt(match[1], 10) * 60) + Number.parseInt(match[2], 10);
+    const adjustedSeconds = Math.max(0, currentSeconds + secondsDelta);
+    const minutes = Math.floor(adjustedSeconds / 60);
+    const seconds = adjustedSeconds % 60;
+    timeField.value = `${minutes}:${String(seconds).padStart(2, '0')}`;
+    await postState(currentFormData());
+}
+
 async function toggleMute() {
     await postState({
         ...currentFormData(),
@@ -702,6 +719,11 @@ document.getElementById('start-stop-button').addEventListener('click', togglePri
 document.getElementById('clock-toggle-button').addEventListener('click', toggleClockRunning);
 document.getElementById('home-plus').addEventListener('click', () => incrementScore('home-score'));
 document.getElementById('away-plus').addEventListener('click', () => incrementScore('away-score'));
+document.querySelectorAll('.time-adjust-button').forEach((button) => {
+    button.addEventListener('mousedown', (event) => event.preventDefault());
+});
+document.getElementById('time-decrement').addEventListener('click', () => adjustClockTime(-1));
+document.getElementById('time-increment').addEventListener('click', () => adjustClockTime(1));
 document.getElementById('home-pp').addEventListener('change', submitOverlayUpdate);
 document.getElementById('home-en').addEventListener('change', submitOverlayUpdate);
 document.getElementById('away-pp').addEventListener('change', submitOverlayUpdate);

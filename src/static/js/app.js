@@ -445,10 +445,12 @@ function currentFormData() {
         home_team: document.getElementById('home-team').value,
         home_score: document.getElementById('home-score').value,
         home_pp: document.getElementById('home-pp').checked,
+        home_pp_time: normalizeClockValue(document.getElementById('home-pp-time').value),
         home_en: document.getElementById('home-en').checked,
         away_team: document.getElementById('away-team').value,
         away_score: document.getElementById('away-score').value,
         away_pp: document.getElementById('away-pp').checked,
+        away_pp_time: normalizeClockValue(document.getElementById('away-pp-time').value),
         away_en: document.getElementById('away-en').checked,
         clock_mode: selectedClockMode ? selectedClockMode.value : 'stop_time',
         period: document.getElementById('period').value,
@@ -499,10 +501,12 @@ function renderState(state) {
     syncInputValue('home-team', state.home_team);
     syncInputValue('home-score', state.home_score);
     document.getElementById('home-pp').checked = Boolean(state.home_pp);
+    syncInputValue('home-pp-time', state.home_pp_time || '');
     document.getElementById('home-en').checked = Boolean(state.home_en);
     syncInputValue('away-team', state.away_team);
     syncInputValue('away-score', state.away_score);
     document.getElementById('away-pp').checked = Boolean(state.away_pp);
+    syncInputValue('away-pp-time', state.away_pp_time || '');
     document.getElementById('away-en').checked = Boolean(state.away_en);
     const selectedClockMode = document.querySelector(`input[name="clock-mode"][value="${state.clock_mode || 'stop_time'}"]`);
     if (selectedClockMode) {
@@ -629,11 +633,13 @@ async function adjustClockTime(secondsDelta) {
 
     const currentSeconds = (Number.parseInt(match[1], 10) * 60) + Number.parseInt(match[2], 10);
     const adjustedSeconds = Math.max(0, currentSeconds + secondsDelta);
+    const actualSecondsDelta = adjustedSeconds - currentSeconds;
     const minutes = Math.floor(adjustedSeconds / 60);
     const seconds = adjustedSeconds % 60;
     timeField.value = `${minutes}:${String(seconds).padStart(2, '0')}`;
     await postState({
         ...currentFormData(),
+        clock_adjustment_seconds: actualSecondsDelta,
         clock_running: Boolean(latestState.clock_running)
     });
 }
@@ -744,6 +750,12 @@ document.getElementById('away-score').addEventListener('blur', submitOverlayUpda
 document.getElementById('period').addEventListener('change', submitOverlayUpdate);
 document.getElementById('time').addEventListener('blur', commitTimeInput);
 document.getElementById('time').addEventListener('keydown', handleTimeInputKeydown);
+document.querySelectorAll('.pp-time-input').forEach((input) => {
+    input.addEventListener('blur', async (event) => {
+        event.target.value = normalizeClockValue(event.target.value);
+        await submitOverlayUpdate();
+    });
+});
 document.getElementById('home-score').addEventListener('input', refreshTeamHeadingsFromInputs);
 document.getElementById('away-score').addEventListener('input', refreshTeamHeadingsFromInputs);
 document.getElementById('home-pp').addEventListener('change', refreshTeamHeadingsFromInputs);

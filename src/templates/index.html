@@ -85,8 +85,30 @@
 
         .team-flags {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: minmax(0, 2fr) minmax(72px, 1fr);
             gap: 12px;
+        }
+
+        .pp-controls {
+            display: grid;
+            grid-template-columns: auto auto minmax(0, 1fr);
+            gap: 12px;
+            justify-content: initial;
+            padding: 10px 12px;
+        }
+
+        .pp-toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            white-space: nowrap;
+        }
+
+        .pp-time-input {
+            min-width: 0;
+            padding: 12px;
+            text-align: center;
+            font-size: 1rem;
         }
 
         .team-panel.left {
@@ -795,10 +817,13 @@
                     <input type="text" id="home-score" class="score-input" value="0" inputmode="numeric">
                 </div>
                 <div class="team-flags">
-                    <label class="option-row team-option">
-                        <input type="checkbox" id="home-pp">
-                        <span>PP</span>
-                    </label>
+                    <div class="option-row team-option pp-controls">
+                        <label class="pp-toggle" for="home-pp">
+                            <input type="checkbox" id="home-pp">
+                            <span>PP</span>
+                        </label>
+                        <input type="text" id="home-pp-time" class="pp-time-input" inputmode="numeric" placeholder="M:SS" aria-label="Home PP time">
+                    </div>
                     <label class="option-row team-option">
                         <input type="checkbox" id="home-en">
                         <span>EN</span>
@@ -813,10 +838,13 @@
                     <input type="text" id="away-score" class="score-input" value="0" inputmode="numeric">
                 </div>
                 <div class="team-flags">
-                    <label class="option-row team-option">
-                        <input type="checkbox" id="away-pp">
-                        <span>PP</span>
-                    </label>
+                    <div class="option-row team-option pp-controls">
+                        <label class="pp-toggle" for="away-pp">
+                            <input type="checkbox" id="away-pp">
+                            <span>PP</span>
+                        </label>
+                        <input type="text" id="away-pp-time" class="pp-time-input" inputmode="numeric" placeholder="M:SS" aria-label="Away PP time">
+                    </div>
                     <label class="option-row team-option">
                         <input type="checkbox" id="away-en">
                         <span>EN</span>

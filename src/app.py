@@ -38,10 +38,12 @@ state = {
     'home_team': team_name_start_values.get('left') or 'Home',
     'home_score': '0',
     'home_pp': False,
+    'home_pp_time': '',
     'home_en': False,
     'away_team': team_name_start_values.get('right') or 'Away',
     'away_score': '0',
     'away_pp': False,
+    'away_pp_time': '',
     'away_en': False,
     'clock_mode': clock_mode_start_value,
     'clock_running': False,
@@ -254,6 +256,20 @@ def format_clock(total_seconds):
     minutes, seconds = divmod(total_seconds, 60)
     return f"{minutes}:{seconds:02d}"
 
+def adjust_pp_times(seconds_delta):
+    for team in ('home', 'away'):
+        if not state[f'{team}_pp']:
+            continue
+        remaining_seconds = parse_clock(state[f'{team}_pp_time'])
+        if remaining_seconds is None:
+            continue
+        adjusted_seconds = max(0, remaining_seconds + seconds_delta)
+        if adjusted_seconds == 0:
+            state[f'{team}_pp_time'] = ''
+            state[f'{team}_pp'] = False
+        else:
+            state[f'{team}_pp_time'] = format_clock(adjusted_seconds)
+
 def current_volume_level():
     return muted_volume_level if state['mute'] else normal_volume_level
 
@@ -314,6 +330,7 @@ def tick_game_clock():
                 updated_state = current_state_payload()
             else:
                 state['time'] = format_clock(remaining_seconds - 1)
+                adjust_pp_times(-1)
                 if parse_clock(state['time']) == 0:
                     state['clock_running'] = False
                     if state['clock_mode'] == 'stop_time' and state['mute_on_stop']:
@@ -930,6 +947,13 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 def apply_overlay_update(data):
     global state
     with state_lock:
+        clock_adjustment_seconds = data.pop('clock_adjustment_seconds', 0)
+        try:
+            clock_adjustment_seconds = int(clock_adjustment_seconds)
+        except (TypeError, ValueError):
+            clock_adjustment_seconds = 0
+        if clock_adjustment_seconds not in (-1, 0, 1):
+            clock_adjustment_seconds = 0
         previous_mute = state['mute']
         previous_time = state['time']
         previous_home_team = state['home_team']
@@ -940,9 +964,14 @@ def apply_overlay_update(data):
             data['away_score'] = normalize_score_value(data['away_score'])
         if 'time' in data:
             data['time'] = normalize_clock_value(data['time'])
+        for key in ('home_pp_time', 'away_pp_time'):
+            if key in data:
+                data[key] = normalize_clock_value(data[key])
         if 'clock_mode' in data and data['clock_mode'] not in ('stop_time', 'run_time'):
             data['clock_mode'] = 'stop_time'
         state.update(data)
+        if clock_adjustment_seconds:
+            adjust_pp_times(clock_adjustment_seconds)
         # The UI posts the full form for mute/unmute actions, so `time` can be
         # present even when the operator did not edit the clock. Also, changing
         # clock mode or period should not stop or start the clock by itself.

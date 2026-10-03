@@ -16,7 +16,7 @@ The YouTube livestream that the demo produced (with much audio muted): https://w
 
 1. Run `ops start` (or `./bin/start_with_lan_ips.sh`.)
 2. Open http://localhost:5001 for control interface.
-3. Configure PRISM Live Studio to stream to `rtmp://<Docker Host IP>:1935/live` with stream key set to `egl`.
+3. Configure PRISM Live Studio to stream to `rtmp://<Docker Host IP>:1935/live/` with stream key set to `egl`.
 
 4. Open a local preview of the overlaid stream at `http://<Docker-Host>:8889/live/preview/?muted=no` for lower-latency WebRTC playback with audio, or `http://<Docker-Host>:8888/live/preview_hls/index.m3u8` for HLS playback. WebRTC requires UDP port `8189` to be reachable, and also the app to be configured with the IP(s) at which it's reachable (via `MTX_WEBRTCADDITIONALHOSTS` env var.).
 

@@ -537,6 +537,7 @@ function renderState(state) {
     const clockMode = state.clock_mode || 'stop_time';
     const clockRunning = Boolean(state.clock_running);
     const isMuted = Boolean(state.mute);
+    const gameTimeLabel = state.time ? ` ${state.time}` : '';
 
     muteOnStop.checked = Boolean(state.mute_on_stop);
     clockToggleButton.textContent = clockRunning ? 'Stop' : 'Start';
@@ -545,11 +546,11 @@ function renderState(state) {
 
     if (clockMode === 'stop_time') {
         toggleButton.classList.remove('is-hidden');
-        toggleButton.textContent = clockRunning ? 'Stop' : 'Start';
+        toggleButton.textContent = `${clockRunning ? 'Stop' : 'Start'}${gameTimeLabel}`;
         toggleButton.classList.toggle('stopped', !clockRunning);
     } else if (state.mute_on_stop) {
         toggleButton.classList.remove('is-hidden');
-        toggleButton.textContent = isMuted ? 'Un-mute' : 'Mute';
+        toggleButton.textContent = `${isMuted ? 'Un-mute' : 'Mute'}${gameTimeLabel}`;
         toggleButton.classList.toggle('stopped', !isMuted);
     } else {
         toggleButton.classList.add('is-hidden');

@@ -6,6 +6,7 @@ import threading
 import time
 import tempfile
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -410,7 +411,8 @@ def youtube_title_for_today(home_team=None, away_team=None):
         with state_lock:
             home_team = home_team or state.get('home_team') or 'Home'
             away_team = away_team or state.get('away_team') or 'Away'
-    return f"{home_team} vs {away_team} - {datetime.now().date().isoformat()}"
+    title_timezone = ZoneInfo(os.getenv('TZ'))
+    return f"{home_team} vs {away_team} - {datetime.now(title_timezone).date().isoformat()}"
 
 def youtube_status_snapshot():
     active_destination = (

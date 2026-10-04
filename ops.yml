@@ -5,8 +5,8 @@ dependencies:
 actions:
   start:
     command: |-
-      chmod +x ./bin/start_with_lan_ips.sh
-      ./bin/start_with_lan_ips.sh
+      chmod +x ./bin/start_with_env_vars.sh
+      ./bin/start_with_env_vars.sh
   stop:
     command: docker compose down
   restart:

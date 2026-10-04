@@ -25,6 +25,7 @@ services:
     environment:
       - FLASK_ENV=development
       - MTX_WEBRTCADDITIONALHOSTS=${MTX_WEBRTCADDITIONALHOSTS:-}
+      - TZ=${TZ:-America/Toronto}
     volumes:
       - ./config:/app/config:ro
       - ./data:/app/data

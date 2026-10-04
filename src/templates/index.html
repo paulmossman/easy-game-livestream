@@ -17,6 +17,10 @@
             --green-b: #0a7c66;
             --red-a: #d9643c;
             --red-b: #b84029;
+            --traffic-green-a: #008f3d;
+            --traffic-green-b: #006b2d;
+            --traffic-red-a: #e00000;
+            --traffic-red-b: #b50000;
             --steel-a: #4c5b65;
             --steel-b: #24323c;
         }
@@ -733,7 +737,7 @@
             color: white;
             cursor: pointer;
             transition: transform 120ms ease, background 200ms ease;
-            background: linear-gradient(160deg, var(--green-a), var(--green-b));
+            background: linear-gradient(160deg, var(--traffic-red-a), var(--traffic-red-b));
         }
 
         .toggle-button.keypress-ready {
@@ -742,7 +746,7 @@
         }
 
         .toggle-button.stopped {
-            background: linear-gradient(160deg, var(--red-a), var(--red-b));
+            background: linear-gradient(160deg, var(--traffic-green-a), var(--traffic-green-b));
         }
 
         .toggle-button:active,

@@ -12,6 +12,6 @@ actions:
   restart:
     command: ops stop && ops start
   ip-list:
-    command: ip -o -4 addr show up
+    command: ip -o -4 addr show up ; printf "%s" "(Default)" ; route -n get 8.8.8.8 | grep interface
     aliases:
       - ips

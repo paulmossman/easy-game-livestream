@@ -666,6 +666,10 @@ function canHandleGlobalKeypress(event) {
         return false;
     }
 
+    return canHandlePrimaryAction();
+}
+
+function canHandlePrimaryAction() {
     const activeTag = document.activeElement ? document.activeElement.tagName : '';
     const isEditable = activeTag === 'INPUT' || activeTag === 'TEXTAREA' || activeTag === 'SELECT';
     if (isEditable) {
@@ -681,6 +685,18 @@ function updatePrimaryActionKeypressIndicator(event) {
 }
 
 async function handleGlobalKeypress(event) {
+    if (event.key === 'Shift') {
+        return;
+    }
+
+    if (['Control', 'Meta', 'Alt'].includes(event.key)) {
+        if (!event.repeat && canHandlePrimaryAction()) {
+            event.preventDefault();
+            await togglePrimaryAction();
+        }
+        return;
+    }
+
     const timeAdjustmentButtonId = {
         '+': 'time-increment',
         '=': 'time-increment',

@@ -672,6 +672,23 @@ function updatePrimaryActionKeypressIndicator(event) {
 }
 
 async function handleGlobalKeypress(event) {
+    const timeAdjustmentButtonId = {
+        '+': 'time-increment',
+        '=': 'time-increment',
+        '-': 'time-decrement',
+        '_': 'time-decrement'
+    }[event.key];
+
+    if (timeAdjustmentButtonId && !event.metaKey && !event.ctrlKey && !event.altKey) {
+        const activeTag = document.activeElement ? document.activeElement.tagName : '';
+        const isEditable = activeTag === 'INPUT' || activeTag === 'TEXTAREA' || activeTag === 'SELECT';
+        if (!isEditable) {
+            event.preventDefault();
+            document.getElementById(timeAdjustmentButtonId).click();
+            return;
+        }
+    }
+
     if (!canHandleGlobalKeypress(event)) {
         updatePrimaryActionKeypressIndicator(event);
         return;

@@ -685,7 +685,7 @@ function updatePrimaryActionKeypressIndicator(event) {
 }
 
 async function handleGlobalKeypress(event) {
-    if (event.key === 'Shift') {
+    if (event.key === 'Shift' || event.key === 'Tab') {
         return;
     }
 
@@ -769,6 +769,20 @@ async function handleTimeInputKeydown(event) {
     }
 }
 
+function handleTabFocus(event) {
+    if (event.key !== 'Tab') {
+        return;
+    }
+
+    const target = event.target;
+    if (!target.matches('input[type="checkbox"], input[type="text"], textarea')) {
+        return;
+    }
+
+    event.preventDefault();
+    target.blur();
+}
+
 document.getElementById('overlay-form').addEventListener('submit', submitOverlayUpdate);
 document.getElementById('start-stop-button').addEventListener('click', togglePrimaryAction);
 document.getElementById('clock-toggle-button').addEventListener('click', toggleClockRunning);
@@ -785,6 +799,7 @@ document.getElementById('away-pp').addEventListener('change', submitOverlayUpdat
 document.getElementById('away-en').addEventListener('change', submitOverlayUpdate);
 document.querySelectorAll('input[name="clock-mode"]').forEach((radio) => {
     radio.addEventListener('change', submitOverlayUpdate);
+    radio.addEventListener('change', () => radio.blur());
 });
 document.getElementById('home-team').addEventListener('blur', submitTeamNameUpdate);
 document.getElementById('away-team').addEventListener('blur', submitTeamNameUpdate);
@@ -793,6 +808,12 @@ document.getElementById('away-score').addEventListener('blur', submitOverlayUpda
 document.getElementById('period').addEventListener('change', submitOverlayUpdate);
 document.getElementById('time').addEventListener('blur', commitTimeInput);
 document.getElementById('time').addEventListener('keydown', handleTimeInputKeydown);
+document.querySelectorAll('select').forEach((select) => {
+    select.addEventListener('change', () => select.blur());
+});
+document.querySelectorAll('input[type="checkbox"]').forEach((checkbox) => {
+    checkbox.addEventListener('change', () => checkbox.blur());
+});
 document.querySelectorAll('.pp-time-input').forEach((input) => {
     input.addEventListener('blur', async (event) => {
         event.target.value = normalizeClockValue(event.target.value);
@@ -822,6 +843,7 @@ document.getElementById('preview-dialog-close').addEventListener('click', () => 
 document.querySelectorAll('input[name="preview-mode"]').forEach((radio) => {
     radio.addEventListener('change', handlePreviewModeChange);
 });
+document.addEventListener('keydown', handleTabFocus);
 document.addEventListener('keydown', handleGlobalKeypress);
 document.addEventListener('focusin', updatePrimaryActionKeypressIndicator);
 document.addEventListener('focusout', updatePrimaryActionKeypressIndicator);

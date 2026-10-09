@@ -247,6 +247,38 @@
             grid-area: toggle;
         }
 
+        .toggle-actions {
+            --toggle-control-height: 116px;
+            --toggle-secondary-width: 124px;
+            --toggle-time-width: clamp(190px, 29vw, 270px);
+            display: grid;
+            grid-template-columns: var(--toggle-time-width) minmax(0, 1fr) var(--toggle-secondary-width);
+            align-items: center;
+            gap: 12px;
+        }
+
+        .toggle-secondary-button {
+            width: var(--toggle-secondary-width);
+            height: var(--toggle-control-height);
+            padding: 8px;
+            border: 0;
+            border-radius: 16px;
+            background: linear-gradient(160deg, var(--steel-a), var(--steel-b));
+            color: white;
+            cursor: pointer;
+            font-size: 2.4rem;
+            font-weight: 900;
+        }
+
+        #game-time-button {
+            width: var(--toggle-time-width);
+            font-size: clamp(2.8rem, 9vw, 5.5rem);
+        }
+
+        #announcement-button {
+            font-size: 5rem;
+        }
+
         .team-heading {
             margin: 0;
             font-size: clamp(1.6rem, 3vw, 2.4rem);
@@ -750,6 +782,7 @@
         }
 
         .toggle-button:active,
+        .toggle-secondary-button:active,
         .plus-button:active,
         .mute-button:active,
         .clock-button:active {
@@ -776,7 +809,31 @@
             }
 
             .toggle-button {
-                min-height: 108px;
+                min-height: var(--toggle-control-height);
+            }
+
+            .toggle-actions {
+                --toggle-control-height: 108px;
+                --toggle-secondary-width: 116px;
+                --toggle-time-width: clamp(190px, 29vw, 270px);
+                grid-template-columns: var(--toggle-time-width) minmax(0, 1fr) var(--toggle-secondary-width);
+                gap: 8px;
+            }
+
+            .toggle-secondary-button {
+                width: var(--toggle-secondary-width);
+                height: 76px;
+                font-size: 2rem;
+            }
+
+            #game-time-button {
+                width: var(--toggle-time-width);
+                font-size: clamp(2.8rem, 9vw, 5.5rem);
+            }
+
+            #announcement-button {
+                padding: 0;
+                font-size: 4rem;
             }
 
             .clock-controls-grid {
@@ -812,7 +869,11 @@
     <div class="layout">
         <form id="overlay-form" class="board">
             <section class="panel toggle-panel">
-                <button id="start-stop-button" class="toggle-button stopped" type="button">Start</button>
+                <div class="toggle-actions">
+                    <button id="game-time-button" class="toggle-secondary-button" type="button" aria-label="Game time">--:--</button>
+                    <button id="start-stop-button" class="toggle-button stopped" type="button">Start</button>
+                    <button id="announcement-button" class="toggle-secondary-button" type="button" aria-label="Outgoing audio active" title="Outgoing audio active">📣</button>
+                </div>
             </section>
 
             <section class="panel team-panel left">

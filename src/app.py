@@ -420,6 +420,7 @@ def youtube_status_snapshot():
         if runtime_youtube_destination.get('broadcast_id') and runtime_youtube_destination.get('broadcast_status') not in inactive_youtube_broadcast_statuses
         else {}
     )
+    active_destination.pop('stream_key', None)
     return {
         'authorized': os.path.exists(google_token_path),
         'oauth_configured': google_client_config() is not None,

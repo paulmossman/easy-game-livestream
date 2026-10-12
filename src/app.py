@@ -450,11 +450,12 @@ def active_youtube_broadcast_runtime_status(service):
     life_cycle_status = ((broadcast_items[0].get('status') or {}).get('lifeCycleStatus')) or runtime_youtube_destination.get('broadcast_status')
 
     video_response = service.videos().list(
-        part='liveStreamingDetails',
+        part='liveStreamingDetails,status',
         id=broadcast_id,
     ).execute()
     video_items = video_response.get('items') or []
     live_streaming_details = (video_items[0].get('liveStreamingDetails') or {}) if video_items else {}
+    video_status = (video_items[0].get('status') or {}) if video_items else {}
     concurrent_viewers = live_streaming_details.get('concurrentViewers')
 
     stream_status = {}
@@ -479,6 +480,7 @@ def active_youtube_broadcast_runtime_status(service):
         'life_cycle_status': life_cycle_status,
         'is_live': life_cycle_status == 'live',
         'concurrent_viewers': concurrent_viewers,
+        'public_stats_viewable': video_status.get('publicStatsViewable'),
         'stream_status': stream_status,
     }
 

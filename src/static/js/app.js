@@ -227,6 +227,17 @@ function youtubeStreamHealthText(activeDestination) {
     if (healthStatus.status) {
         details.push(`Overall stream health: ${healthLabels[healthStatus.status] || healthStatus.status}`);
     }
+    const updatedAtSeconds = Number(healthStatus.lastUpdateTimeSeconds);
+    const youtubeUpdatedAt = Number.isFinite(updatedAtSeconds) && updatedAtSeconds > 0
+        ? new Date(updatedAtSeconds * 1000)
+        : null;
+    const hasYoutubeUpdatedAt = youtubeUpdatedAt && !Number.isNaN(youtubeUpdatedAt.getTime());
+    const displayedUpdatedAt = hasYoutubeUpdatedAt ? youtubeUpdatedAt : new Date();
+    const updateTimeLabel = hasYoutubeUpdatedAt ? 'Health updated' : 'Health checked';
+    const formattedUpdatedAt = new Intl.DateTimeFormat(undefined, {
+        timeStyle: 'medium'
+    }).format(displayedUpdatedAt);
+    details.push(`${updateTimeLabel}: ${formattedUpdatedAt}`);
 
     const issues = Array.isArray(healthStatus.configurationIssues)
         ? healthStatus.configurationIssues

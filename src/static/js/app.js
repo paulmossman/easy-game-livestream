@@ -3,7 +3,7 @@ let youtubeChannels = [];
 let latestState = {};
 let previewHls = null;
 const youtubeCreatePendingKey = 'youtube-create-pending';
-const youtubeStatusPollIntervalMs = 30000;
+const youtubeStatusPollIntervalMs = 15000;
 const previewModeStorageKey = 'preview-mode';
 const previewHostStorageKey = 'webrtc-preview-host';
 

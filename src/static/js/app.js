@@ -161,6 +161,13 @@ function setYouTubeLiveMeta(text = '') {
     meta.classList.toggle('is-hidden', !hasText);
 }
 
+function setYouTubeStreamHealth(text = '') {
+    const health = document.getElementById('youtube-stream-health');
+    const hasText = Boolean(text);
+    health.textContent = text;
+    health.classList.toggle('is-hidden', !hasText);
+}
+
 function formatViewerCount(viewers) {
     if (typeof viewers !== 'number' || Number.isNaN(viewers)) {
         return '';
@@ -191,6 +198,48 @@ function youtubeLiveMetaText(activeDestination) {
         return 'YouTube stream ended';
     }
     return liveStatus ? `YouTube status: ${liveStatus}` : '';
+}
+
+function youtubeStreamHealthText(activeDestination) {
+    const streamStatus = activeDestination && activeDestination.stream_status;
+    if (!streamStatus) {
+        return '';
+    }
+
+    const inputStatusLabels = {
+        active: 'Receiving data',
+        created: 'Created',
+        error: 'Error',
+        inactive: 'Not receiving data',
+        ready: 'Ready'
+    };
+    const healthStatus = streamStatus.healthStatus || {};
+    const healthLabels = {
+        good: 'Good',
+        ok: 'OK',
+        bad: 'Bad',
+        noData: 'Health data unavailable'
+    };
+    const details = [];
+    if (streamStatus.streamStatus) {
+        details.push(`Input: ${inputStatusLabels[streamStatus.streamStatus] || streamStatus.streamStatus}`);
+    }
+    if (healthStatus.status) {
+        details.push(`Overall stream health: ${healthLabels[healthStatus.status] || healthStatus.status}`);
+    }
+
+    const issues = Array.isArray(healthStatus.configurationIssues)
+        ? healthStatus.configurationIssues
+        : [];
+    issues.forEach((issue) => {
+        const severity = issue.severity ? `${issue.severity}: ` : '';
+        const description = issue.description || issue.reason;
+        if (description) {
+            details.push(`${severity}${description}`);
+        }
+    });
+
+    return details.join(' · ');
 }
 
 function setCreateStreamAvailability(enabled, label) {
@@ -262,6 +311,7 @@ async function loadYouTubeStatus() {
         setCreateStreamAvailability(false, 'Create New Stream Unavailable');
         setYoutubeStatus('Manual YouTube Studio mode', 'This app can publish with a reusable stream key, but browser-created YouTube streams are disabled until Google OAuth is configured.');
         setYouTubeLiveMeta('');
+        setYouTubeStreamHealth('');
         renderYouTubeChannels([]);
         renderYouTubeActions(null, false);
         return;
@@ -272,6 +322,7 @@ async function loadYouTubeStatus() {
     if (!data.authorized) {
         setYoutubeStatus('Not connected', data.authorization_error || 'Sign in to YouTube before creating a stream.');
         setYouTubeLiveMeta('');
+        setYouTubeStreamHealth('');
         renderYouTubeChannels([]);
         renderYouTubeActions(null, false);
         return;
@@ -284,6 +335,7 @@ async function loadYouTubeStatus() {
             data.active_destination.broadcast_title || 'Current YouTube broadcast is ready.'
         );
         setYouTubeLiveMeta(youtubeLiveMetaText(data.active_destination));
+        setYouTubeStreamHealth(youtubeStreamHealthText(data.active_destination));
         renderYouTubeActions(data.active_destination, Boolean(data.can_stop));
     } else if (youtubeChannels.length > 0) {
         if (await maybeAutoCreateYouTubeStream()) {
@@ -297,10 +349,12 @@ async function loadYouTubeStatus() {
             setYoutubeStatus('Choose a channel', 'Select which YouTube channel should receive the new stream.');
         }
         setYouTubeLiveMeta('');
+        setYouTubeStreamHealth('');
         renderYouTubeActions(null, false);
     } else {
         setYoutubeStatus('Connected', 'No YouTube channels were returned for this login.');
         setYouTubeLiveMeta('');
+        setYouTubeStreamHealth('');
         renderYouTubeActions(null, false);
     }
 
@@ -367,6 +421,7 @@ async function createYouTubeStream(channelId) {
     renderYouTubeChannels([]);
     renderYouTubeActions(data, true);
     setYoutubeStatus(data.channel_title || 'YouTube ready', data.title || 'Broadcast created.');
+    await loadYouTubeStatus();
 }
 function meterWidthFromDb(audioDb) {
     if (typeof audioDb !== 'number' || Number.isNaN(audioDb)) {

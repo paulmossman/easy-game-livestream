@@ -456,6 +456,16 @@ def active_youtube_broadcast_runtime_status(service):
     live_streaming_details = (video_items[0].get('liveStreamingDetails') or {}) if video_items else {}
     concurrent_viewers = live_streaming_details.get('concurrentViewers')
 
+    stream_status = {}
+    stream_id = runtime_youtube_destination.get('stream_id')
+    if stream_id:
+        stream_response = service.liveStreams().list(
+            part='status',
+            id=stream_id,
+        ).execute()
+        stream_items = stream_response.get('items') or []
+        stream_status = (stream_items[0].get('status') or {}) if stream_items else {}
+
     try:
         concurrent_viewers = int(concurrent_viewers) if concurrent_viewers is not None else None
     except (TypeError, ValueError):
@@ -468,6 +478,7 @@ def active_youtube_broadcast_runtime_status(service):
         'life_cycle_status': life_cycle_status,
         'is_live': life_cycle_status == 'live',
         'concurrent_viewers': concurrent_viewers,
+        'stream_status': stream_status,
     }
 
 def google_client_config():

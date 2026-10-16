@@ -2,9 +2,11 @@ import os
 import subprocess
 import json
 import re
+import sqlite3
 import threading
 import time
 import tempfile
+import uuid
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 import urllib.error
@@ -59,7 +61,13 @@ state = {
 }
 ffmpeg_process = None
 relay_ffmpeg_process = None
+relay_metrics_session_id = None
 process_lock = threading.Lock()
+relay_metrics_lock = threading.Lock()
+metrics_retention_seconds = 7 * 24 * 60 * 60
+metrics_last_pruned_at = 0
+metrics_database_initialized = False
+metrics_database_lock = threading.Lock()
 publish_start_generation = 0
 ffmpeg_ready = False
 muted_volume_level = '0.001'
@@ -160,6 +168,115 @@ def watch_relay_ffmpeg(process):
         if relay_ffmpeg_process is process:
             print(f"Relay FFmpeg exited with code {return_code}", flush=True)
             relay_ffmpeg_process = None
+
+def parse_ffmpeg_time(value):
+    try:
+        hours, minutes, seconds = value.split(':', 2)
+        return (int(hours) * 3600) + (int(minutes) * 60) + float(seconds)
+    except (AttributeError, TypeError, ValueError):
+        return None
+
+def parse_ffmpeg_progress_value(progress, key):
+    value = progress.get(key)
+    if not value or value == 'N/A':
+        return None
+    try:
+        if key == 'speed':
+            return float(value.rstrip('x'))
+        if key == 'bitrate':
+            match = re.match(r'(-?\d+(?:\.\d+)?)', value)
+            return float(match.group(1)) if match else None
+        return float(value)
+    except (ValueError, IndexError):
+        return None
+
+def initialize_metrics_database():
+    global metrics_database_initialized
+    with metrics_database_lock:
+        if metrics_database_initialized:
+            return
+        ensure_app_data_dir()
+        with sqlite3.connect(os.path.join(app_data_dir, 'stream-metrics.sqlite3'), timeout=5) as connection:
+            connection.execute('''
+                CREATE TABLE IF NOT EXISTS relay_metrics (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp REAL NOT NULL,
+                    session_id TEXT NOT NULL,
+                    broadcast_id TEXT,
+                    out_time_seconds REAL,
+                    total_size_bytes INTEGER,
+                    speed REAL,
+                    ffmpeg_bitrate_kbps REAL,
+                    send_mbps REAL
+                )
+            ''')
+            connection.execute(
+                'CREATE INDEX IF NOT EXISTS relay_metrics_session_time ON relay_metrics(session_id, timestamp)'
+            )
+        metrics_database_initialized = True
+
+def store_relay_metric(session_id, progress, previous_sample):
+    global metrics_last_pruned_at
+    now = time.time()
+    out_time_seconds = parse_ffmpeg_time(progress.get('out_time'))
+    if out_time_seconds is None:
+        out_time_seconds = parse_ffmpeg_progress_value(progress, 'out_time_us')
+        if out_time_seconds is not None:
+            out_time_seconds /= 1_000_000
+
+    total_size = parse_ffmpeg_progress_value(progress, 'total_size')
+    total_size_bytes = int(total_size) if total_size is not None else None
+    speed = parse_ffmpeg_progress_value(progress, 'speed')
+    bitrate_kbps = parse_ffmpeg_progress_value(progress, 'bitrate')
+    send_mbps = None
+    if (
+        total_size_bytes is not None
+        and previous_sample is not None
+        and previous_sample['total_size_bytes'] is not None
+        and total_size_bytes >= previous_sample['total_size_bytes']
+        and now > previous_sample['timestamp']
+    ):
+        send_mbps = ((total_size_bytes - previous_sample['total_size_bytes']) * 8) / (
+            (now - previous_sample['timestamp']) * 1_000_000
+        )
+
+    with relay_metrics_lock:
+        broadcast_id = runtime_youtube_destination.get('broadcast_id')
+    database_path = os.path.join(app_data_dir, 'stream-metrics.sqlite3')
+    initialize_metrics_database()
+    with sqlite3.connect(database_path, timeout=5) as connection:
+        connection.execute(
+            '''INSERT INTO relay_metrics
+               (timestamp, session_id, broadcast_id, out_time_seconds, total_size_bytes, speed, ffmpeg_bitrate_kbps, send_mbps)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
+            (now, session_id, broadcast_id, out_time_seconds, total_size_bytes, speed, bitrate_kbps, send_mbps),
+        )
+        if now - metrics_last_pruned_at >= 300:
+            connection.execute(
+                'DELETE FROM relay_metrics WHERE timestamp < ?',
+                (now - metrics_retention_seconds,),
+            )
+            metrics_last_pruned_at = now
+
+    return {
+        'timestamp': now,
+        'total_size_bytes': total_size_bytes,
+    }
+
+def watch_relay_progress(process, session_id):
+    progress = {}
+    previous_sample = None
+    for line in process.stdout:
+        key, separator, value = line.strip().partition('=')
+        if not separator:
+            continue
+        progress[key] = value
+        if key == 'progress':
+            try:
+                previous_sample = store_relay_metric(session_id, progress, previous_sample)
+            except sqlite3.Error as e:
+                print(f"Could not store relay metrics: {e}", flush=True)
+            progress = {}
 
 def current_overlay_text():
     home_flags = ' '.join(flag for flag, enabled in [('PP', state['home_pp']), ('EN', state['home_en'])] if enabled)
@@ -828,7 +945,7 @@ def is_stream_ready():
     return mediamtx_path_ready(current_stream_path())
 
 def start_relay_ffmpeg():
-    global relay_ffmpeg_process
+    global relay_ffmpeg_process, relay_metrics_session_id
     upstream_url = current_upstream_output_url()
     if not upstream_url:
         return
@@ -839,6 +956,7 @@ def start_relay_ffmpeg():
     if not mediamtx_path_ready(stream_path_from_url(input_url)):
         return
 
+    session_id = uuid.uuid4().hex
     try:
         relay_cmd = [
             'ffmpeg',
@@ -846,19 +964,31 @@ def start_relay_ffmpeg():
             '-i', input_url,
             '-c', 'copy',
             '-f', 'flv',
+            '-stats_period', '1',
+            '-progress', 'pipe:1',
             upstream_url,
         ]
         print("Starting relay FFmpeg:", ' '.join(relay_cmd), flush=True)
         relay_ffmpeg_process = subprocess.Popen(
             relay_cmd,
-            stdout=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            bufsize=1,
         )
+        with relay_metrics_lock:
+            relay_metrics_session_id = session_id
         threading.Thread(target=watch_relay_ffmpeg, args=(relay_ffmpeg_process,), daemon=True).start()
+        threading.Thread(
+            target=watch_relay_progress,
+            args=(relay_ffmpeg_process, session_id),
+            daemon=True,
+        ).start()
     except Exception as e:
         print(f"Error starting relay FFmpeg: {e}", flush=True)
         relay_ffmpeg_process = None
+        with relay_metrics_lock:
+            relay_metrics_session_id = None
 
 def run_ffmpeg():
     global ffmpeg_process, ffmpeg_ready
@@ -1052,6 +1182,58 @@ def update_state():
         data['clock_running'] = str(data['clock_running']).lower() in ('1', 'true', 'yes', 'on')
     updated_state = apply_overlay_update(data)
     return jsonify(updated_state)
+
+@app.route('/api/stream/metrics', methods=['GET'])
+def stream_metrics():
+    duration_text = request.args.get('minutes', '15')
+    if not re.fullmatch(r'[0-9]+', duration_text):
+        return jsonify({'error': 'minutes must be an integer'}), 400
+    duration_minutes = int(duration_text)
+    if not 1 <= duration_minutes <= 1440:
+        return jsonify({'error': 'minutes must be between 1 and 1440'}), 400
+
+    with relay_metrics_lock:
+        session_id = relay_metrics_session_id
+
+    try:
+        initialize_metrics_database()
+        cutoff = time.time() - (duration_minutes * 60)
+        with sqlite3.connect(os.path.join(app_data_dir, 'stream-metrics.sqlite3'), timeout=5) as connection:
+            if not session_id:
+                latest_session = connection.execute(
+                    '''SELECT session_id FROM relay_metrics
+                       WHERE timestamp >= ? ORDER BY timestamp DESC LIMIT 1''',
+                    (cutoff,),
+                ).fetchone()
+                session_id = latest_session[0] if latest_session else None
+            if not session_id:
+                return jsonify({'session_id': None, 'samples': []})
+            rows = connection.execute(
+                '''SELECT timestamp, out_time_seconds, total_size_bytes, speed,
+                          ffmpeg_bitrate_kbps, send_mbps
+                   FROM relay_metrics
+                   WHERE session_id = ? AND timestamp >= ?
+                   ORDER BY timestamp''',
+                (session_id, cutoff),
+            ).fetchall()
+    except sqlite3.Error as e:
+        return jsonify({'session_id': session_id, 'samples': [], 'error': str(e)}), 503
+
+    samples = [
+        {
+            'timestamp': row[0],
+            'out_time_seconds': row[1],
+            'total_size_bytes': row[2],
+            'speed': row[3],
+            'ffmpeg_bitrate_kbps': row[4],
+            'send_mbps': row[5],
+        }
+        for row in rows
+    ]
+    if len(samples) > 301:
+        step = (len(samples) - 1) / 300
+        samples = [samples[round(index * step)] for index in range(301)]
+    return jsonify({'session_id': session_id, 'samples': samples})
 
 @app.route('/api/youtube/status', methods=['GET'])
 def youtube_status():

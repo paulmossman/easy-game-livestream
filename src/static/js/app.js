@@ -2,10 +2,13 @@ const socket = io();
 let youtubeChannels = [];
 let latestState = {};
 let previewHls = null;
+let relayMetricSamples = [];
 const youtubeCreatePendingKey = 'youtube-create-pending';
 const youtubeStatusPollIntervalMs = 15000;
+const relayMetricsWindowStorageKey = 'relay-metrics-window-minutes';
 const previewModeStorageKey = 'preview-mode';
 const previewHostStorageKey = 'webrtc-preview-host';
+let relayMetricsWindowMinutes = 15;
 
 function webrtcPreviewUrl() {
     const selectedHost = document.getElementById('preview-host-select').value;
@@ -250,7 +253,179 @@ function youtubeStreamHealthText(activeDestination) {
         }
     });
 
-    return details.join(' · ');
+    return details.join('\n');
+}
+
+function drawRelayMetricsChart(samples) {
+    const canvas = document.getElementById('relay-metrics-chart');
+    const bounds = canvas.getBoundingClientRect();
+    if (!bounds.width || !samples.length) {
+        return;
+    }
+
+    const pixelRatio = window.devicePixelRatio || 1;
+    canvas.width = Math.round(bounds.width * pixelRatio);
+    canvas.height = Math.round(bounds.height * pixelRatio);
+    const context = canvas.getContext('2d');
+    context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+    context.clearRect(0, 0, bounds.width, bounds.height);
+
+    const left = 42;
+    const right = bounds.width - 8;
+    const chartWidth = Math.max(1, right - left);
+    const windowEnd = Date.now() / 1000;
+    const windowSeconds = relayMetricsWindowMinutes * 60;
+    const windowStart = windowEnd - windowSeconds;
+    const lanes = [
+        {
+            key: 'speed',
+            title: 'Speed (x real time)',
+            color: '#087f70',
+            top: 12,
+            height: 56,
+            maximum: Math.max(1.5, Math.ceil(Math.max(...samples.map((sample) => sample.speed || 0)) * 2) / 2)
+        },
+        {
+            key: 'send_mbps',
+            title: 'Output (Mbps)',
+            color: '#c45132',
+            top: 94,
+            height: 56,
+            maximum: Math.max(1, Math.ceil(Math.max(...samples.map((sample) => sample.send_mbps || 0)) * 2) / 2)
+        }
+    ];
+
+    context.font = '11px "Avenir Next", "Helvetica Neue", sans-serif';
+    context.lineWidth = 1;
+    lanes.forEach((lane) => {
+        const plotTop = lane.top + 13;
+        const plotBottom = lane.top + lane.height;
+        const plotHeight = plotBottom - plotTop;
+        context.fillStyle = '#3d3934';
+        context.fillText(lane.title, 0, lane.top + 8);
+        context.strokeStyle = 'rgba(31, 26, 23, 0.14)';
+        context.fillStyle = '#706b64';
+        [0, 0.5, 1].forEach((fraction) => {
+            const y = plotBottom - (fraction * plotHeight);
+            context.beginPath();
+            context.moveTo(left, y);
+            context.lineTo(right, y);
+            context.stroke();
+            context.fillText((lane.maximum * fraction).toFixed(lane.maximum < 2 ? 1 : 0), 0, y + 4);
+        });
+
+        if (lane.key === 'speed' && lane.maximum >= 1) {
+            const realtimeY = plotBottom - (plotHeight / lane.maximum);
+            context.save();
+            context.setLineDash([4, 4]);
+            context.strokeStyle = '#a8462d';
+            context.beginPath();
+            context.moveTo(left, realtimeY);
+            context.lineTo(right, realtimeY);
+            context.stroke();
+            context.restore();
+        }
+
+        context.strokeStyle = lane.color;
+        context.lineWidth = 2;
+        context.beginPath();
+        let started = false;
+        samples.forEach((sample) => {
+            const value = sample[lane.key];
+            if (typeof value !== 'number' || !Number.isFinite(value)) {
+                started = false;
+                return;
+            }
+            const x = left + (Math.max(0, Math.min(1, (sample.timestamp - windowStart) / windowSeconds)) * chartWidth);
+            const y = plotBottom - (Math.max(0, Math.min(lane.maximum, value)) / lane.maximum * plotHeight);
+            if (started) {
+                context.lineTo(x, y);
+            } else {
+                context.moveTo(x, y);
+                started = true;
+            }
+        });
+        context.stroke();
+    });
+
+    context.fillStyle = '#706b64';
+    context.fillText(`${relayMetricsWindowMinutes} min ago`, left, bounds.height - 2);
+    const nowLabel = 'now';
+    context.fillText(nowLabel, right - context.measureText(nowLabel).width, bounds.height - 2);
+}
+
+async function loadRelayMetrics() {
+    try {
+        const query = new URLSearchParams({ minutes: String(relayMetricsWindowMinutes) });
+        const response = await fetch(`/api/stream/metrics?${query.toString()}`, { cache: 'no-store' });
+        if (!response.ok) {
+            return;
+        }
+        const data = await response.json();
+        relayMetricSamples = Array.isArray(data.samples) ? data.samples : [];
+        const panel = document.getElementById('relay-metrics');
+        panel.classList.toggle('is-hidden', relayMetricSamples.length === 0);
+        if (!relayMetricSamples.length) {
+            return;
+        }
+
+        const latest = relayMetricSamples[relayMetricSamples.length - 1];
+        const speedText = typeof latest.speed === 'number' ? `${latest.speed.toFixed(2)}x` : 'speed n/a';
+        const rateText = typeof latest.send_mbps === 'number'
+            ? `${latest.send_mbps.toFixed(2)} Mbps`
+            : 'rate warming up';
+        const sampleTime = new Date(latest.timestamp * 1000);
+        const sampleTimeText = new Intl.DateTimeFormat(undefined, {
+            timeStyle: 'medium'
+        }).format(sampleTime);
+        document.getElementById('relay-metrics-summary').textContent = `${speedText} · ${rateText} · ${sampleTimeText}`;
+        drawRelayMetricsChart(relayMetricSamples);
+    } catch (error) {
+        console.warn('Could not load relay metrics', error);
+    }
+}
+
+function updateRelayMetricsWindowLabels() {
+    const minutes = relayMetricsWindowMinutes;
+    document.querySelector('#relay-metrics-window').value = String(minutes);
+    document.querySelector('#relay-metrics-window').setAttribute('aria-valuetext', `${minutes} minutes`);
+    document.querySelector('#relay-metrics-chart').setAttribute(
+        'aria-label',
+        `Relay speed and send rate over the last ${minutes} minutes`
+    );
+}
+
+function initializeRelayMetricsWindow() {
+    const input = document.getElementById('relay-metrics-window');
+    const savedValue = Number(window.localStorage.getItem(relayMetricsWindowStorageKey));
+    if (Number.isInteger(savedValue) && savedValue >= 1 && savedValue <= 1440) {
+        relayMetricsWindowMinutes = savedValue;
+    }
+    updateRelayMetricsWindowLabels();
+
+    input.addEventListener('input', () => {
+        const integerText = input.value.replace(/\D/g, '');
+        if (input.value !== integerText) {
+            input.value = integerText;
+        }
+        const minutes = Number(integerText);
+        if (!Number.isInteger(minutes) || minutes < 1 || minutes > 1440) {
+            return;
+        }
+        relayMetricsWindowMinutes = minutes;
+        window.localStorage.setItem(relayMetricsWindowStorageKey, String(minutes));
+        updateRelayMetricsWindowLabels();
+        loadRelayMetrics();
+    });
+
+    input.addEventListener('blur', updateRelayMetricsWindowLabels);
+    input.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            event.stopPropagation();
+            input.blur();
+        }
+    });
 }
 
 function setCreateStreamAvailability(enabled, label) {
@@ -928,7 +1103,11 @@ window.addEventListener('message', (event) => {
 
 socket.on('state_updated', renderState);
 
+window.addEventListener('resize', () => drawRelayMetricsChart(relayMetricSamples));
 initializePreviewPlayer();
+initializeRelayMetricsWindow();
 loadInitialState();
 loadYouTubeStatus();
+loadRelayMetrics();
 window.setInterval(loadYouTubeStatus, youtubeStatusPollIntervalMs);
+window.setInterval(loadRelayMetrics, 5000);

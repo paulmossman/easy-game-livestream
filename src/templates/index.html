@@ -73,18 +73,9 @@
 
         .team-top-row {
             display: grid;
-            grid-template-columns: minmax(0, 1fr) 96px;
+            grid-template-columns: minmax(0, 1fr) 96px 48px;
             gap: 14px;
             align-items: center;
-        }
-
-        .team-panel.left .team-top-row {
-            display: flex;
-            justify-content: flex-start;
-        }
-
-        .team-panel.left .score-input {
-            flex: 0 0 96px;
         }
 
         .team-flags {
@@ -337,8 +328,11 @@
         }
 
         .plus-button {
-            min-height: 120px;
-            font-size: 4rem;
+            width: 48px;
+            height: 48px;
+            padding: 0;
+            border-radius: 12px;
+            font-size: 1.8rem;
             background: linear-gradient(160deg, var(--green-a), var(--green-b));
         }
 
@@ -941,6 +935,7 @@
                 <div class="team-top-row">
                     <h2 id="home-team-heading" class="team-heading">Home</h2>
                     <input type="text" id="home-score" class="score-input" value="0" inputmode="numeric">
+                    <button type="button" id="home-plus" class="plus-button" aria-label="Increase home score">+</button>
                 </div>
                 <div class="team-flags">
                     <div class="option-row team-option pp-controls">
@@ -955,13 +950,13 @@
                         <span>EN</span>
                     </label>
                 </div>
-                <button type="button" id="home-plus" class="plus-button">+</button>
             </section>
 
             <section class="panel team-panel right">
                 <div class="team-top-row">
                     <h2 id="away-team-heading" class="team-heading right">Away</h2>
                     <input type="text" id="away-score" class="score-input" value="0" inputmode="numeric">
+                    <button type="button" id="away-plus" class="plus-button" aria-label="Increase away score">+</button>
                 </div>
                 <div class="team-flags">
                     <div class="option-row team-option pp-controls">
@@ -976,7 +971,6 @@
                         <span>EN</span>
                     </label>
                 </div>
-                <button type="button" id="away-plus" class="plus-button">+</button>
             </section>
 
             <section class="panel preview-panel">

@@ -8,6 +8,7 @@ const youtubeStatusPollIntervalMs = 15000;
 const relayMetricsWindowStorageKey = 'relay-metrics-window-minutes';
 const previewModeStorageKey = 'preview-mode';
 const previewHostStorageKey = 'webrtc-preview-host';
+const toggleBufferMs = Number(document.body.dataset.toggleBufferMs);
 let relayMetricsWindowMinutes = 15;
 
 function webrtcPreviewUrl() {
@@ -886,6 +887,18 @@ async function toggleMute() {
     });
 }
 
+let lastPrimaryActionKeypressAt = null;
+
+function shouldIgnorePrimaryActionKeypress() {
+    const now = Date.now();
+    if (lastPrimaryActionKeypressAt !== null && now - lastPrimaryActionKeypressAt < toggleBufferMs) {
+        return true;
+    }
+
+    lastPrimaryActionKeypressAt = now;
+    return false;
+}
+
 function canHandleGlobalKeypress(event) {
     if (event.metaKey || event.ctrlKey || event.altKey) {
         return false;
@@ -917,6 +930,9 @@ async function handleGlobalKeypress(event) {
     if (['Control', 'Alt'].includes(event.key)) {
         if (!event.repeat && canHandlePrimaryAction()) {
             event.preventDefault();
+            if (shouldIgnorePrimaryActionKeypress()) {
+                return;
+            }
             await togglePrimaryAction();
         }
         return;
@@ -945,6 +961,9 @@ async function handleGlobalKeypress(event) {
     }
 
     event.preventDefault();
+    if (shouldIgnorePrimaryActionKeypress()) {
+        return;
+    }
     await togglePrimaryAction();
 }
 

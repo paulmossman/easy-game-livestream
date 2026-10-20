@@ -1162,7 +1162,12 @@ def apply_overlay_update(data):
 
 @app.route('/')
 def index():
-    return render_template('index.html', webrtc_additional_hosts=os.getenv('MTX_WEBRTCADDITIONALHOSTS', ''))
+    toggle_buffer_ms = config.get('web_ui_start_values', {}).get('toggle_buffer_ms', 400)
+    return render_template(
+        'index.html',
+        webrtc_additional_hosts=os.getenv('MTX_WEBRTCADDITIONALHOSTS', ''),
+        toggle_buffer_ms=toggle_buffer_ms,
+    )
 
 @app.route('/youtube-stop')
 def youtube_stop_page():

@@ -591,8 +591,8 @@ async function createYouTubeStream(channelId) {
         },
         body: JSON.stringify({
             channel_id: channelId,
-            home_team: formData.home_team,
-            away_team: formData.away_team
+            left_team: formData.left_team,
+            right_team: formData.right_team
         })
     });
 
@@ -619,7 +619,7 @@ function meterWidthFromDb(audioDb) {
 }
 
 function teamDisplay(teamName, score, ppEnabled, enEnabled, isRightSide) {
-    const safeTeamName = teamName || (isRightSide ? 'Right Team' : 'Left Team');
+    const safeTeamName = teamName || (isRightSide ? 'Right' : 'Left');
     const safeScore = score || '0';
     const flags = [];
     if (ppEnabled) {
@@ -647,18 +647,18 @@ function renderOverlayMock(state) {
     const periodText = isClockIrrelevant ? '' : state.period;
     const timeElement = document.getElementById('overlay-time-text');
     const periodElement = document.getElementById('overlay-period-text');
-    document.getElementById('overlay-home-text').textContent = teamDisplay(
-        state.home_team,
-        state.home_score,
-        state.home_pp,
-        state.home_en,
+    document.getElementById('overlay-left-text').textContent = teamDisplay(
+        state.left_team,
+        state.left_score,
+        state.left_pp,
+        state.left_en,
         false
     );
-    document.getElementById('overlay-away-text').textContent = teamDisplay(
-        state.away_team,
-        state.away_score,
-        state.away_pp,
-        state.away_en,
+    document.getElementById('overlay-right-text').textContent = teamDisplay(
+        state.right_team,
+        state.right_score,
+        state.right_pp,
+        state.right_en,
         true
     );
     timeElement.textContent = timeText;
@@ -671,16 +671,16 @@ function renderOverlayMock(state) {
 function currentFormData() {
     const selectedClockMode = document.querySelector('input[name="clock-mode"]:checked');
     return {
-        home_team: document.getElementById('home-team').value,
-        home_score: document.getElementById('home-score').value,
-        home_pp: document.getElementById('home-pp').checked,
-        home_pp_time: normalizeClockValue(document.getElementById('home-pp-time').value),
-        home_en: document.getElementById('home-en').checked,
-        away_team: document.getElementById('away-team').value,
-        away_score: document.getElementById('away-score').value,
-        away_pp: document.getElementById('away-pp').checked,
-        away_pp_time: normalizeClockValue(document.getElementById('away-pp-time').value),
-        away_en: document.getElementById('away-en').checked,
+        left_team: document.getElementById('left-team').value,
+        left_score: document.getElementById('left-score').value,
+        left_pp: document.getElementById('left-pp').checked,
+        left_pp_time: normalizeClockValue(document.getElementById('left-pp-time').value),
+        left_en: document.getElementById('left-en').checked,
+        right_team: document.getElementById('right-team').value,
+        right_score: document.getElementById('right-score').value,
+        right_pp: document.getElementById('right-pp').checked,
+        right_pp_time: normalizeClockValue(document.getElementById('right-pp-time').value),
+        right_en: document.getElementById('right-en').checked,
         clock_mode: selectedClockMode ? selectedClockMode.value : 'stop_time',
         period: document.getElementById('period').value,
         time: normalizeClockValue(document.getElementById('time').value),
@@ -727,16 +727,16 @@ function syncInputValue(id, value) {
 function renderState(state) {
     latestState = state;
     updatePreviewAudioWarning(state);
-    syncInputValue('home-team', state.home_team);
-    syncInputValue('home-score', state.home_score);
-    document.getElementById('home-pp').checked = Boolean(state.home_pp);
-    syncInputValue('home-pp-time', state.home_pp_time || '');
-    document.getElementById('home-en').checked = Boolean(state.home_en);
-    syncInputValue('away-team', state.away_team);
-    syncInputValue('away-score', state.away_score);
-    document.getElementById('away-pp').checked = Boolean(state.away_pp);
-    syncInputValue('away-pp-time', state.away_pp_time || '');
-    document.getElementById('away-en').checked = Boolean(state.away_en);
+    syncInputValue('left-team', state.left_team);
+    syncInputValue('left-score', state.left_score);
+    document.getElementById('left-pp').checked = Boolean(state.left_pp);
+    syncInputValue('left-pp-time', state.left_pp_time || '');
+    document.getElementById('left-en').checked = Boolean(state.left_en);
+    syncInputValue('right-team', state.right_team);
+    syncInputValue('right-score', state.right_score);
+    document.getElementById('right-pp').checked = Boolean(state.right_pp);
+    syncInputValue('right-pp-time', state.right_pp_time || '');
+    document.getElementById('right-en').checked = Boolean(state.right_en);
     const selectedClockMode = document.querySelector(`input[name="clock-mode"][value="${state.clock_mode || 'stop_time'}"]`);
     if (selectedClockMode) {
         selectedClockMode.checked = true;
@@ -745,13 +745,13 @@ function renderState(state) {
         document.getElementById('period').value = state.period;
     }
     syncInputValue('time', state.time);
-    document.getElementById('home-team-heading').textContent = teamHeadingDisplay(
-        document.getElementById('home-team').value,
-        'Home'
+    document.getElementById('left-team-heading').textContent = teamHeadingDisplay(
+        document.getElementById('left-team').value,
+        'Left'
     );
-    document.getElementById('away-team-heading').textContent = teamHeadingDisplay(
-        document.getElementById('away-team').value,
-        'Away'
+    document.getElementById('right-team-heading').textContent = teamHeadingDisplay(
+        document.getElementById('right-team').value,
+        'Right'
     );
     renderOverlayMock(state);
 
@@ -959,13 +959,13 @@ async function loadInitialState() {
 }
 
 function refreshTeamHeadingsFromInputs() {
-    document.getElementById('home-team-heading').textContent = teamHeadingDisplay(
-        document.getElementById('home-team').value,
-        'Home'
+    document.getElementById('left-team-heading').textContent = teamHeadingDisplay(
+        document.getElementById('left-team').value,
+        'Left'
     );
-    document.getElementById('away-team-heading').textContent = teamHeadingDisplay(
-        document.getElementById('away-team').value,
-        'Away'
+    document.getElementById('right-team-heading').textContent = teamHeadingDisplay(
+        document.getElementById('right-team').value,
+        'Right'
     );
 }
 
@@ -1007,25 +1007,25 @@ function handleTabFocus(event) {
 document.getElementById('overlay-form').addEventListener('submit', submitOverlayUpdate);
 document.getElementById('start-stop-button').addEventListener('click', togglePrimaryAction);
 document.getElementById('clock-toggle-button').addEventListener('click', toggleClockRunning);
-document.getElementById('home-plus').addEventListener('click', () => incrementScore('home-score'));
-document.getElementById('away-plus').addEventListener('click', () => incrementScore('away-score'));
+document.getElementById('left-plus').addEventListener('click', () => incrementScore('left-score'));
+document.getElementById('right-plus').addEventListener('click', () => incrementScore('right-score'));
 document.querySelectorAll('.time-adjust-button').forEach((button) => {
     button.addEventListener('mousedown', (event) => event.preventDefault());
 });
 document.getElementById('time-decrement').addEventListener('click', () => adjustClockTime(-1));
 document.getElementById('time-increment').addEventListener('click', () => adjustClockTime(1));
-document.getElementById('home-pp').addEventListener('change', submitOverlayUpdate);
-document.getElementById('home-en').addEventListener('change', submitOverlayUpdate);
-document.getElementById('away-pp').addEventListener('change', submitOverlayUpdate);
-document.getElementById('away-en').addEventListener('change', submitOverlayUpdate);
+document.getElementById('left-pp').addEventListener('change', submitOverlayUpdate);
+document.getElementById('left-en').addEventListener('change', submitOverlayUpdate);
+document.getElementById('right-pp').addEventListener('change', submitOverlayUpdate);
+document.getElementById('right-en').addEventListener('change', submitOverlayUpdate);
 document.querySelectorAll('input[name="clock-mode"]').forEach((radio) => {
     radio.addEventListener('change', submitOverlayUpdate);
     radio.addEventListener('change', () => radio.blur());
 });
-document.getElementById('home-team').addEventListener('blur', submitTeamNameUpdate);
-document.getElementById('away-team').addEventListener('blur', submitTeamNameUpdate);
-document.getElementById('home-score').addEventListener('blur', submitOverlayUpdate);
-document.getElementById('away-score').addEventListener('blur', submitOverlayUpdate);
+document.getElementById('left-team').addEventListener('blur', submitTeamNameUpdate);
+document.getElementById('right-team').addEventListener('blur', submitTeamNameUpdate);
+document.getElementById('left-score').addEventListener('blur', submitOverlayUpdate);
+document.getElementById('right-score').addEventListener('blur', submitOverlayUpdate);
 document.getElementById('period').addEventListener('change', submitOverlayUpdate);
 document.getElementById('time').addEventListener('blur', commitTimeInput);
 document.getElementById('time').addEventListener('keydown', handleTimeInputKeydown);
@@ -1041,19 +1041,19 @@ document.querySelectorAll('.pp-time-input').forEach((input) => {
         await submitOverlayUpdate();
     });
 });
-document.getElementById('home-score').addEventListener('input', refreshTeamHeadingsFromInputs);
-document.getElementById('away-score').addEventListener('input', refreshTeamHeadingsFromInputs);
-document.getElementById('home-pp').addEventListener('change', refreshTeamHeadingsFromInputs);
-document.getElementById('home-en').addEventListener('change', refreshTeamHeadingsFromInputs);
-document.getElementById('away-pp').addEventListener('change', refreshTeamHeadingsFromInputs);
-document.getElementById('away-en').addEventListener('change', refreshTeamHeadingsFromInputs);
+document.getElementById('left-score').addEventListener('input', refreshTeamHeadingsFromInputs);
+document.getElementById('right-score').addEventListener('input', refreshTeamHeadingsFromInputs);
+document.getElementById('left-pp').addEventListener('change', refreshTeamHeadingsFromInputs);
+document.getElementById('left-en').addEventListener('change', refreshTeamHeadingsFromInputs);
+document.getElementById('right-pp').addEventListener('change', refreshTeamHeadingsFromInputs);
+document.getElementById('right-en').addEventListener('change', refreshTeamHeadingsFromInputs);
 document.getElementById('period').addEventListener('change', refreshTeamHeadingsFromInputs);
 document.getElementById('time').addEventListener('input', refreshTeamHeadingsFromInputs);
 document.getElementById('mute-on-stop').addEventListener('change', submitOverlayUpdate);
 document.getElementById('mute-toggle-button').addEventListener('click', toggleMute);
 document.getElementById('create-stream-button').addEventListener('click', handleCreateStreamClick);
-document.getElementById('home-team').addEventListener('input', refreshTeamHeadingsFromInputs);
-document.getElementById('away-team').addEventListener('input', refreshTeamHeadingsFromInputs);
+document.getElementById('left-team').addEventListener('input', refreshTeamHeadingsFromInputs);
+document.getElementById('right-team').addEventListener('input', refreshTeamHeadingsFromInputs);
 document.getElementById('show-video').addEventListener('change', (event) => setPreviewVisibility(event.target.checked));
 document.getElementById('preview-advanced-button').addEventListener('click', () => {
     document.getElementById('preview-settings-dialog').showModal();

@@ -28,7 +28,7 @@ Use this when you want the app to publish to YouTube with the configured stream 
 2. Click `Create`, then `Go live`.
 3. If YouTube asks whether you want to stream right now or schedule for later, choose the option that gets you into Live Control Room for a stream.
 4. In Live Control Room, confirm the selected stream key is `egl`.
-5. Set the stream title in YouTube Studio. A good format is `<Home Team> vs <Away Team> - YYYY-MM-DD`.
+5. Set the stream title in YouTube Studio. A good format is `<Left Team> vs <Right Team> - YYYY-MM-DD`.
 6. Set the visibility, audience, and any other YouTube options you care about.
 7. Leave that YouTube Live Control Room page open.
 8. Start the incoming stream from PRISM to this app.

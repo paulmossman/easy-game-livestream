@@ -503,13 +503,13 @@
             text-overflow: ellipsis;
         }
 
-        .overlay-chip.home {
+        .overlay-chip.left {
             top: 0;
             left: 0;
             font-size: 1.1rem;
         }
 
-        .overlay-chip.away {
+        .overlay-chip.right {
             top: 0;
             right: 0;
             font-size: 1.1rem;
@@ -933,20 +933,20 @@
 
             <section class="panel team-panel left">
                 <div class="team-top-row">
-                    <h2 id="home-team-heading" class="team-heading">Home</h2>
-                    <input type="text" id="home-score" class="score-input" value="0" inputmode="numeric">
-                    <button type="button" id="home-plus" class="plus-button" aria-label="Increase home score">+</button>
+                    <h2 id="left-team-heading" class="team-heading">Left</h2>
+                    <input type="text" id="left-score" class="score-input" value="0" inputmode="numeric">
+                    <button type="button" id="left-plus" class="plus-button" aria-label="Increase left score">+</button>
                 </div>
                 <div class="team-flags">
                     <div class="option-row team-option pp-controls">
-                        <label class="pp-toggle" for="home-pp">
-                            <input type="checkbox" id="home-pp">
+                        <label class="pp-toggle" for="left-pp">
+                            <input type="checkbox" id="left-pp">
                             <span>PP</span>
                         </label>
-                        <input type="text" id="home-pp-time" class="pp-time-input" inputmode="numeric" placeholder="M:SS" aria-label="Home PP time">
+                        <input type="text" id="left-pp-time" class="pp-time-input" inputmode="numeric" placeholder="M:SS" aria-label="Left PP time">
                     </div>
                     <label class="option-row team-option">
-                        <input type="checkbox" id="home-en">
+                        <input type="checkbox" id="left-en">
                         <span>EN</span>
                     </label>
                 </div>
@@ -954,20 +954,20 @@
 
             <section class="panel team-panel right">
                 <div class="team-top-row">
-                    <h2 id="away-team-heading" class="team-heading right">Away</h2>
-                    <input type="text" id="away-score" class="score-input" value="0" inputmode="numeric">
-                    <button type="button" id="away-plus" class="plus-button" aria-label="Increase away score">+</button>
+                    <h2 id="right-team-heading" class="team-heading right">Right</h2>
+                    <input type="text" id="right-score" class="score-input" value="0" inputmode="numeric">
+                    <button type="button" id="right-plus" class="plus-button" aria-label="Increase right score">+</button>
                 </div>
                 <div class="team-flags">
                     <div class="option-row team-option pp-controls">
-                        <label class="pp-toggle" for="away-pp">
-                            <input type="checkbox" id="away-pp">
+                        <label class="pp-toggle" for="right-pp">
+                            <input type="checkbox" id="right-pp">
                             <span>PP</span>
                         </label>
-                        <input type="text" id="away-pp-time" class="pp-time-input" inputmode="numeric" placeholder="M:SS" aria-label="Away PP time">
+                        <input type="text" id="right-pp-time" class="pp-time-input" inputmode="numeric" placeholder="M:SS" aria-label="Right PP time">
                     </div>
                     <label class="option-row team-option">
-                        <input type="checkbox" id="away-en">
+                        <input type="checkbox" id="right-en">
                         <span>EN</span>
                     </label>
                 </div>
@@ -992,8 +992,8 @@
                         controls
                     ></video>
                     <div id="overlay-mock" class="overlay-mock is-hidden" aria-hidden="true">
-                        <div id="overlay-home-text" class="overlay-chip home">Home: 0</div>
-                        <div id="overlay-away-text" class="overlay-chip away">Away: 0</div>
+                        <div id="overlay-left-text" class="overlay-chip left">Left: 0</div>
+                        <div id="overlay-right-text" class="overlay-chip right">Right: 0</div>
                         <div id="overlay-time-text" class="overlay-chip time">20:00</div>
                         <div id="overlay-period-text" class="overlay-chip period">Period 1</div>
                         <div id="overlay-mute-icon" class="overlay-mute is-hidden">MUTED</div>
@@ -1110,12 +1110,12 @@
                 </div>
                 <div class="settings-grid">
                     <label>
-                        Left Team
-                        <input type="text" id="home-team" value="Home">
+                        Left
+                        <input type="text" id="left-team" value="Left">
                     </label>
                     <label>
-                        Right Team
-                        <input type="text" id="away-team" value="Away">
+                        Right
+                        <input type="text" id="right-team" value="Right">
                     </label>
                 </div>
             </section>

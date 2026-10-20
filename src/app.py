@@ -38,16 +38,16 @@ if 'run_time' in clock_start_values:
 os.environ.setdefault('OAUTHLIB_INSECURE_TRANSPORT', '1')
 
 state = {
-    'home_team': team_name_start_values.get('left') or 'Home',
-    'home_score': '0',
-    'home_pp': False,
-    'home_pp_time': '',
-    'home_en': False,
-    'away_team': team_name_start_values.get('right') or 'Away',
-    'away_score': '0',
-    'away_pp': False,
-    'away_pp_time': '',
-    'away_en': False,
+    'left_team': team_name_start_values.get('left') or 'Left',
+    'left_score': '0',
+    'left_pp': False,
+    'left_pp_time': '',
+    'left_en': False,
+    'right_team': team_name_start_values.get('right') or 'Right',
+    'right_score': '0',
+    'right_pp': False,
+    'right_pp_time': '',
+    'right_en': False,
     'clock_mode': clock_mode_start_value,
     'clock_running': False,
     'period': clock_start_values.get('Period') or 'Period 1',
@@ -106,8 +106,8 @@ runtime_youtube_destination = {
 inactive_youtube_broadcast_statuses = {'complete', 'deleted'}
 deletable_youtube_broadcast_statuses = {'created', 'ready'}
 primary_font_path = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'
-overlay_home_text_path = '/tmp/overlay-home.txt'
-overlay_away_text_path = '/tmp/overlay-away.txt'
+overlay_left_text_path = '/tmp/overlay-left.txt'
+overlay_right_text_path = '/tmp/overlay-right.txt'
 overlay_period_text_path = '/tmp/overlay-period.txt'
 overlay_time_text_path = '/tmp/overlay-time.txt'
 overlay_mute_text_path = '/tmp/overlay-mute.txt'
@@ -279,10 +279,12 @@ def watch_relay_progress(process, session_id):
             progress = {}
 
 def current_overlay_text():
-    home_flags = ' '.join(flag for flag, enabled in [('PP', state['home_pp']), ('EN', state['home_en'])] if enabled)
-    away_flags = ' '.join(flag for flag, enabled in [('PP', state['away_pp']), ('EN', state['away_en'])] if enabled)
-    home_display = f"{state['home_team']}: {state['home_score']}" + (f" {home_flags}" if home_flags else '')
-    away_display = ((f"{away_flags} " if away_flags else '') + f"{state['away_team']}: {state['away_score']}")
+    left_flags = ' '.join(flag for flag, enabled in [('PP', state['left_pp']), ('EN', state['left_en'])] if enabled)
+    right_flags = ' '.join(flag for flag, enabled in [('PP', state['right_pp']), ('EN', state['right_en'])] if enabled)
+    left_team = state['left_team'] or 'Left'
+    right_team = state['right_team'] or 'Right'
+    left_display = f"{left_team}: {state['left_score']}" + (f" {left_flags}" if left_flags else '')
+    right_display = ((f"{right_flags} " if right_flags else '') + f"{right_team}: {state['right_score']}")
     period_text = state['period']
     time_text = state['time']
 
@@ -291,8 +293,8 @@ def current_overlay_text():
         period_text = ''
 
     return {
-        'home': home_display,
-        'away': away_display,
+        'left': left_display,
+        'right': right_display,
         'period': period_text,
         'time': time_text,
         'mute': 'MUTED' if state['mute'] else '',
@@ -309,8 +311,8 @@ def write_text_file(path, text):
 
 def overlay_signature(overlay_text):
     return (
-        overlay_text['home'],
-        overlay_text['away'],
+        overlay_text['left'],
+        overlay_text['right'],
         overlay_text['period'],
         overlay_text['time'],
         overlay_text['mute'],
@@ -324,8 +326,8 @@ def write_overlay_text(force=False):
     if not force and current_signature == last_overlay_signature:
         return False
 
-    write_text_file(overlay_home_text_path, overlay_text['home'])
-    write_text_file(overlay_away_text_path, overlay_text['away'])
+    write_text_file(overlay_left_text_path, overlay_text['left'])
+    write_text_file(overlay_right_text_path, overlay_text['right'])
     write_text_file(overlay_period_text_path, overlay_text['period'])
     write_text_file(overlay_time_text_path, overlay_text['time'])
     write_text_file(overlay_mute_text_path, overlay_text['mute'])
@@ -375,7 +377,7 @@ def format_clock(total_seconds):
     return f"{minutes}:{seconds:02d}"
 
 def adjust_pp_times(seconds_delta):
-    for team in ('home', 'away'):
+    for team in ('left', 'right'):
         if not state[f'{team}_pp']:
             continue
         remaining_seconds = parse_clock(state[f'{team}_pp_time'])
@@ -523,13 +525,13 @@ def load_runtime_youtube_destination():
 def config_is_writable():
     return os.access(os.path.dirname(config_path), os.W_OK)
 
-def youtube_title_for_today(home_team=None, away_team=None):
-    if home_team is None or away_team is None:
+def youtube_title_for_today(left_team=None, right_team=None):
+    if left_team is None or right_team is None:
         with state_lock:
-            home_team = home_team or state.get('home_team') or 'Home'
-            away_team = away_team or state.get('away_team') or 'Away'
+            left_team = left_team or state.get('left_team') or 'Left'
+            right_team = right_team or state.get('right_team') or 'Right'
     title_timezone = ZoneInfo(os.getenv('TZ'))
-    return f"{home_team} vs {away_team} - {datetime.now(title_timezone).date().isoformat()}"
+    return f"{left_team} vs {right_team} - {datetime.now(title_timezone).date().isoformat()}"
 
 def youtube_status_snapshot():
     active_destination = (
@@ -675,7 +677,7 @@ def restart_relay_ffmpeg():
         if is_ffmpeg_running():
             start_relay_ffmpeg()
 
-def create_youtube_broadcast_for_channel(channel_id, home_team=None, away_team=None):
+def create_youtube_broadcast_for_channel(channel_id, left_team=None, right_team=None):
     service = youtube_service()
     channels = youtube_channel_choices(service)
     selected_channel = next((item for item in channels if item['id'] == channel_id), None)
@@ -683,7 +685,7 @@ def create_youtube_broadcast_for_channel(channel_id, home_team=None, away_team=N
         raise ValueError('Selected YouTube channel is no longer available')
 
     now = datetime.now(timezone.utc).replace(microsecond=0)
-    title = youtube_title_for_today(home_team=home_team, away_team=away_team)
+    title = youtube_title_for_today(left_team=left_team, right_team=right_team)
     latency = config.get('youtube_latency_preference', 'ultraLow')
     privacy = config.get('youtube_privacy_status', 'public')
 
@@ -760,7 +762,7 @@ def create_youtube_broadcast_for_channel(channel_id, home_team=None, away_team=N
         'channel_title': runtime_youtube_destination['channel_title'],
     }
 
-def update_active_youtube_broadcast_title(home_team=None, away_team=None):
+def update_active_youtube_broadcast_title(left_team=None, right_team=None):
     broadcast_id = runtime_youtube_destination.get('broadcast_id')
     if not broadcast_id or runtime_youtube_destination.get('broadcast_status') in inactive_youtube_broadcast_statuses:
         return None
@@ -775,7 +777,7 @@ def update_active_youtube_broadcast_title(home_team=None, away_team=None):
         raise ValueError('Active YouTube broadcast could not be found')
 
     item = items[0]
-    title = youtube_title_for_today(home_team=home_team, away_team=away_team)
+    title = youtube_title_for_today(left_team=left_team, right_team=right_team)
     snippet = dict(item.get('snippet') or {})
     snippet['title'] = title
 
@@ -1001,9 +1003,9 @@ def run_ffmpeg():
         ffmpeg_ready = False
         write_overlay_text(force=True)
         filter_complex = ';'.join([
-            f"[0:v]drawtext=fontfile={primary_font_path}:textfile={overlay_home_text_path}:reload=1:fontcolor=white:fontsize=38:box=1:boxcolor=black@0.69:boxborderw=18:x=18:y=18[v_home]",
-            f"[v_home]drawtext=fontfile={primary_font_path}:textfile={overlay_away_text_path}:reload=1:fontcolor=white:fontsize=38:box=1:boxcolor=black@0.69:boxborderw=18:x=w-tw-18:y=18[v_away]",
-            f"[v_away]drawtext=fontfile={primary_font_path}:textfile={overlay_time_text_path}:reload=1:fontcolor=white:fontsize=44:box=1:boxcolor=black@0.69:boxborderw=18:x=(w-tw)/2:y=18[v_time]",
+            f"[0:v]drawtext=fontfile={primary_font_path}:textfile={overlay_left_text_path}:reload=1:fontcolor=white:fontsize=38:box=1:boxcolor=black@0.69:boxborderw=18:x=18:y=18[v_left]",
+            f"[v_left]drawtext=fontfile={primary_font_path}:textfile={overlay_right_text_path}:reload=1:fontcolor=white:fontsize=38:box=1:boxcolor=black@0.69:boxborderw=18:x=w-tw-18:y=18[v_right]",
+            f"[v_right]drawtext=fontfile={primary_font_path}:textfile={overlay_time_text_path}:reload=1:fontcolor=white:fontsize=44:box=1:boxcolor=black@0.69:boxborderw=18:x=(w-tw)/2:y=18[v_time]",
             f"[v_time]drawtext=fontfile={primary_font_path}:textfile={overlay_period_text_path}:reload=1:fontcolor=white:fontsize=32:box=1:boxcolor=black@0.69:boxborderw=18:x=18:y=h-th-18[v_period]",
             f"[v_period]drawtext=fontfile={primary_font_path}:textfile={overlay_mute_text_path}:reload=1:fontcolor=white@0.76:fontsize=38:x=w-tw-34:y=h-th-72[v_composited]",
             '[v_composited]split=2[v_preview][v_webrtc]',
@@ -1102,15 +1104,15 @@ def apply_overlay_update(data):
             clock_adjustment_seconds = 0
         previous_mute = state['mute']
         previous_time = state['time']
-        previous_home_team = state['home_team']
-        previous_away_team = state['away_team']
-        if 'home_score' in data:
-            data['home_score'] = normalize_score_value(data['home_score'])
-        if 'away_score' in data:
-            data['away_score'] = normalize_score_value(data['away_score'])
+        previous_left_team = state['left_team']
+        previous_right_team = state['right_team']
+        if 'left_score' in data:
+            data['left_score'] = normalize_score_value(data['left_score'])
+        if 'right_score' in data:
+            data['right_score'] = normalize_score_value(data['right_score'])
         if 'time' in data:
             data['time'] = normalize_clock_value(data['time'])
-        for key in ('home_pp_time', 'away_pp_time'):
+        for key in ('left_pp_time', 'right_pp_time'):
             if key in data:
                 data[key] = normalize_clock_value(data[key])
         if 'clock_mode' in data and data['clock_mode'] not in ('stop_time', 'run_time'):
@@ -1140,14 +1142,14 @@ def apply_overlay_update(data):
         runtime_youtube_destination.get('broadcast_id')
         and runtime_youtube_destination.get('broadcast_status') not in inactive_youtube_broadcast_statuses
         and (
-            updated_state['home_team'] != previous_home_team
-            or updated_state['away_team'] != previous_away_team
+            updated_state['left_team'] != previous_left_team
+            or updated_state['right_team'] != previous_right_team
         )
     ):
         try:
             updated_title = update_active_youtube_broadcast_title(
-                home_team=updated_state['home_team'],
-                away_team=updated_state['away_team'],
+                left_team=updated_state['left_team'],
+                right_team=updated_state['right_team'],
             )
             if updated_title:
                 print(f"Updated active YouTube broadcast title to: {updated_title}", flush=True)
@@ -1175,7 +1177,7 @@ def update_state():
     data = request.get_json(silent=True) or request.form.to_dict()
     if 'mute' in data and not isinstance(data['mute'], bool):
         data['mute'] = str(data['mute']).lower() in ('1', 'true', 'yes', 'on')
-    for key in ('home_pp', 'home_en', 'away_pp', 'away_en', 'mute_on_stop'):
+    for key in ('left_pp', 'left_en', 'right_pp', 'right_en', 'mute_on_stop'):
         if key in data and not isinstance(data[key], bool):
             data[key] = str(data[key]).lower() in ('1', 'true', 'yes', 'on')
     if 'clock_running' in data and not isinstance(data['clock_running'], bool):
@@ -1308,14 +1310,14 @@ def youtube_create_stream():
     if not channel_id:
         return jsonify({'error': 'channel_id is required'}), 400
 
-    home_team = (data.get('home_team') or '').strip() or None
-    away_team = (data.get('away_team') or '').strip() or None
+    left_team = (data.get('left_team') or '').strip() or None
+    right_team = (data.get('right_team') or '').strip() or None
 
     try:
         created = create_youtube_broadcast_for_channel(
             channel_id,
-            home_team=home_team,
-            away_team=away_team,
+            left_team=left_team,
+            right_team=right_team,
         )
     except ValueError as e:
         return jsonify({'error': str(e)}), 400

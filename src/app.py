@@ -24,8 +24,10 @@ from googleapiclient.errors import HttpError
 
 # Load config
 config_path = '/app/config/config.yml'
-if os.path.exists(config_path):
-    with open(config_path, encoding='utf-8') as f:
+default_config_path = '/app/config/default_config.yml'
+load_config_path = config_path if os.path.exists(config_path) else default_config_path
+if os.path.exists(load_config_path):
+    with open(load_config_path, encoding='utf-8') as f:
         config = yaml.safe_load(f) or {}
 else:
     config = {}

@@ -1,4 +1,5 @@
 config/*
+!config/default_config.yml
 data/*
 !data/.gitkeep
 src/__pycache__

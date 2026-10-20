@@ -1,0 +1,43 @@
+# This file is ignored if config.yml is present.
+
+youtube_privacy_status: public
+
+team_names:
+  left: Centaurs
+  right: Bears
+
+toggle_buffer_ms: 400
+
+phases:
+  - name: Warmup
+    duration: '0:02'
+    start_muted: true
+    run_time: true
+    mute_on_stop: false
+  - name: Period 1
+    duration: '0:05'
+    start_muted: true
+    run_time: false
+    mute_on_stop: true
+  - name: Period 2
+    duration: '0:03'
+    start_muted: true
+    run_time: false
+    mute_on_stop: true
+  - name: Flood
+    start_muted: true
+  - name: Period 3
+    duration: '0:03'
+    start_muted: true
+    run_time: false
+    mute_on_stop: true
+    next_phase_if_tied: OT
+  - name: Final
+    start_muted: false
+  - name: OT
+    duration: '0:04'
+    start_muted: true
+    run_time: false
+    mute_on_stop: true
+  - name: Shootout
+    start_muted: false

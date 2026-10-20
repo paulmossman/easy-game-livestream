@@ -910,11 +910,11 @@ function updatePrimaryActionKeypressIndicator(event) {
 }
 
 async function handleGlobalKeypress(event) {
-    if (event.key === 'Shift' || event.key === 'Tab') {
+    if (['Shift', 'Meta', 'Tab'].includes(event.key)) {
         return;
     }
 
-    if (['Control', 'Meta', 'Alt'].includes(event.key)) {
+    if (['Control', 'Alt'].includes(event.key)) {
         if (!event.repeat && canHandlePrimaryAction()) {
             event.preventDefault();
             await togglePrimaryAction();

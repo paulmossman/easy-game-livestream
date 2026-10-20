@@ -106,7 +106,7 @@ Before clicking `Go live` in YouTube Studio, verify:
 ## Features
 
 - Accepts RTMP stream from iPhone
-- Adds dynamic text overlay with score, period, time
+- Adds dynamic text overlay with score, game phase, and time
 - Mutes/un-mutes audio
 - Web interface for real-time control
 - Forwards to YouTube livestream

@@ -31,10 +31,52 @@ else:
     config = {}
 
 team_name_start_values = config.get('team_names', {})
-clock_start_values = config.get('clock', {})
-clock_mode_start_value = config.get('clock_mode', 'stop_time')
-if 'run_time' in clock_start_values:
-    clock_mode_start_value = 'run_time' if clock_start_values['run_time'] else 'stop_time'
+phase_configurations = [
+    phase for phase in config.get('phases', [])
+    if isinstance(phase, dict) and isinstance(phase.get('name'), str) and phase['name']
+]
+initial_phase_configuration = phase_configurations[0] if phase_configurations else {}
+initial_phase_name = initial_phase_configuration.get('name', '')
+
+def phase_configuration(phase_name):
+    return next(
+        (phase for phase in phase_configurations if phase['name'] == phase_name),
+        None,
+    )
+
+def phase_has_duration(phase_name):
+    phase = phase_configuration(phase_name)
+    return bool(phase and phase.get('duration') not in (None, ''))
+
+def phase_duration(phase_name):
+    phase = phase_configuration(phase_name)
+    if not phase or not phase_has_duration(phase_name):
+        return ''
+    return normalize_clock_value(phase['duration'])
+
+def apply_phase_defaults(phase_name):
+    phase = phase_configuration(phase_name) or {}
+    state['phase'] = phase_name
+    state['time'] = phase_duration(phase_name)
+    state['clock_mode'] = 'run_time' if phase.get('run_time', False) else 'stop_time'
+    state['mute_on_stop'] = phase.get('mute_on_stop', True)
+    state['mute'] = phase.get('start_muted', False)
+    state['clock_running'] = False
+
+def next_phase_name():
+    phase_names = [phase['name'] for phase in phase_configurations]
+    try:
+        next_index = phase_names.index(state['phase']) + 1
+    except ValueError:
+        return None
+    if next_index >= len(phase_names):
+        return None
+
+    if normalize_score_value(state['left_score']) == normalize_score_value(state['right_score']):
+        tied_phase_name = (phase_configuration(state['phase']) or {}).get('next_phase_if_tied')
+        if tied_phase_name in phase_names:
+            return tied_phase_name
+    return phase_names[next_index]
 
 os.environ.setdefault('OAUTHLIB_INSECURE_TRANSPORT', '1')
 
@@ -49,12 +91,12 @@ state = {
     'right_pp': False,
     'right_pp_time': '',
     'right_en': False,
-    'clock_mode': clock_mode_start_value,
+    'clock_mode': 'run_time' if initial_phase_configuration.get('run_time', False) else 'stop_time',
     'clock_running': False,
-    'period': clock_start_values.get('Period') or 'Period 1',
-    'time': clock_start_values.get('Time') or '20:00',
-    'mute': clock_start_values.get('muted', False),
-    'mute_on_stop': clock_start_values.get('mute_on_stop', True),
+    'phase': initial_phase_name,
+    'time': str(initial_phase_configuration.get('duration') or ''),
+    'mute': initial_phase_configuration.get('start_muted', False),
+    'mute_on_stop': initial_phase_configuration.get('mute_on_stop', True),
     'incoming_audio_db': None,
     'incoming_audio_label': 'Waiting for stream',
     'incoming_audio_active': False,
@@ -109,7 +151,7 @@ deletable_youtube_broadcast_statuses = {'created', 'ready'}
 primary_font_path = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'
 overlay_left_text_path = '/tmp/overlay-left.txt'
 overlay_right_text_path = '/tmp/overlay-right.txt'
-overlay_period_text_path = '/tmp/overlay-period.txt'
+overlay_phase_text_path = '/tmp/overlay-phase.txt'
 overlay_time_text_path = '/tmp/overlay-time.txt'
 overlay_mute_text_path = '/tmp/overlay-mute.txt'
 last_overlay_signature = None
@@ -286,17 +328,17 @@ def current_overlay_text():
     right_team = state['right_team'] or 'Right'
     left_display = f"{left_team}: {state['left_score']}" + (f" {left_flags}" if left_flags else '')
     right_display = ((f"{right_flags} " if right_flags else '') + f"{right_team}: {state['right_score']}")
-    period_text = state['period']
+    phase_text = state['phase']
     time_text = state['time']
 
-    if period_text in ('Final', 'Shootout'):
-        time_text = period_text
-        period_text = ''
+    if not phase_has_duration(state['phase']):
+        time_text = phase_text
+        phase_text = ''
 
     return {
         'left': left_display,
         'right': right_display,
-        'period': period_text,
+        'phase': phase_text,
         'time': time_text,
         'mute': 'MUTED' if state['mute'] else '',
     }
@@ -314,7 +356,7 @@ def overlay_signature(overlay_text):
     return (
         overlay_text['left'],
         overlay_text['right'],
-        overlay_text['period'],
+        overlay_text['phase'],
         overlay_text['time'],
         overlay_text['mute'],
     )
@@ -329,7 +371,7 @@ def write_overlay_text(force=False):
 
     write_text_file(overlay_left_text_path, overlay_text['left'])
     write_text_file(overlay_right_text_path, overlay_text['right'])
-    write_text_file(overlay_period_text_path, overlay_text['period'])
+    write_text_file(overlay_phase_text_path, overlay_text['phase'])
     write_text_file(overlay_time_text_path, overlay_text['time'])
     write_text_file(overlay_mute_text_path, overlay_text['mute'])
     last_overlay_signature = current_signature
@@ -337,7 +379,9 @@ def write_overlay_text(force=False):
     return True
 
 def current_state_payload():
-    return dict(state)
+    payload = dict(state)
+    payload['phase_has_duration'] = phase_has_duration(state['phase'])
+    return payload
 
 def normalize_score_value(value):
     try:
@@ -446,7 +490,10 @@ def tick_game_clock():
                 continue
             if remaining_seconds <= 0:
                 state['clock_running'] = False
-                if state['clock_mode'] == 'stop_time' and state['mute_on_stop']:
+                next_phase = next_phase_name() if phase_has_duration(state['phase']) else None
+                if next_phase:
+                    apply_phase_defaults(next_phase)
+                elif state['clock_mode'] == 'stop_time' and state['mute_on_stop']:
                     state['mute'] = True
                 updated_state = current_state_payload()
             else:
@@ -454,7 +501,10 @@ def tick_game_clock():
                 adjust_pp_times(-1)
                 if parse_clock(state['time']) == 0:
                     state['clock_running'] = False
-                    if state['clock_mode'] == 'stop_time' and state['mute_on_stop']:
+                    next_phase = next_phase_name() if phase_has_duration(state['phase']) else None
+                    if next_phase:
+                        apply_phase_defaults(next_phase)
+                    elif state['clock_mode'] == 'stop_time' and state['mute_on_stop']:
                         state['mute'] = True
                 updated_state = current_state_payload()
             sync_mute_state(previous_mute)
@@ -1006,8 +1056,8 @@ def run_ffmpeg():
             f"[0:v]drawtext=fontfile={primary_font_path}:textfile={overlay_left_text_path}:reload=1:fontcolor=white:fontsize=38:box=1:boxcolor=black@0.69:boxborderw=18:x=18:y=18[v_left]",
             f"[v_left]drawtext=fontfile={primary_font_path}:textfile={overlay_right_text_path}:reload=1:fontcolor=white:fontsize=38:box=1:boxcolor=black@0.69:boxborderw=18:x=w-tw-18:y=18[v_right]",
             f"[v_right]drawtext=fontfile={primary_font_path}:textfile={overlay_time_text_path}:reload=1:fontcolor=white:fontsize=44:box=1:boxcolor=black@0.69:boxborderw=18:x=(w-tw)/2:y=18[v_time]",
-            f"[v_time]drawtext=fontfile={primary_font_path}:textfile={overlay_period_text_path}:reload=1:fontcolor=white:fontsize=32:box=1:boxcolor=black@0.69:boxborderw=18:x=18:y=h-th-18[v_period]",
-            f"[v_period]drawtext=fontfile={primary_font_path}:textfile={overlay_mute_text_path}:reload=1:fontcolor=white@0.76:fontsize=38:x=w-tw-34:y=h-th-72[v_composited]",
+            f"[v_time]drawtext=fontfile={primary_font_path}:textfile={overlay_phase_text_path}:reload=1:fontcolor=white:fontsize=32:box=1:boxcolor=black@0.69:boxborderw=18:x=18:y=h-th-18[v_phase]",
+            f"[v_phase]drawtext=fontfile={primary_font_path}:textfile={overlay_mute_text_path}:reload=1:fontcolor=white@0.76:fontsize=38:x=w-tw-34:y=h-th-72[v_composited]",
             '[v_composited]split=2[v_preview][v_webrtc]',
             f'[0:a]{audio_control_target}=volume={current_volume_level()},asplit=2[a_preview][a_webrtc]',
         ])
@@ -1104,8 +1154,12 @@ def apply_overlay_update(data):
             clock_adjustment_seconds = 0
         previous_mute = state['mute']
         previous_time = state['time']
+        previous_phase = state['phase']
+        phase_changed = 'phase' in data and phase_configuration(data['phase']) is not None and data['phase'] != previous_phase
         previous_left_team = state['left_team']
         previous_right_team = state['right_team']
+        if 'phase' in data and phase_configuration(data['phase']) is None:
+            data.pop('phase')
         if 'left_score' in data:
             data['left_score'] = normalize_score_value(data['left_score'])
         if 'right_score' in data:
@@ -1118,21 +1172,23 @@ def apply_overlay_update(data):
         if 'clock_mode' in data and data['clock_mode'] not in ('stop_time', 'run_time'):
             data['clock_mode'] = 'stop_time'
         state.update(data)
+        if phase_changed:
+            apply_phase_defaults(state['phase'])
         if clock_adjustment_seconds:
             adjust_pp_times(clock_adjustment_seconds)
         # The UI posts the full form for mute/unmute actions, so `time` can be
         # present even when the operator did not edit the clock. Also, changing
-        # clock mode or period should not stop or start the clock by itself.
+        # clock mode or phase should not stop or start the clock by itself.
         # Only stop a running run-time clock when the time value changed.
         if state['clock_mode'] == 'run_time' and (
             'time' in data and data['time'] != previous_time
         ):
             state['clock_running'] = False
-        if 'mute_on_stop' in data and state['clock_mode'] == 'stop_time' and state['mute_on_stop'] and not state['clock_running']:
+        if phase_has_duration(state['phase']) and not phase_changed and 'mute_on_stop' in data and state['clock_mode'] == 'stop_time' and state['mute_on_stop'] and not state['clock_running']:
             state['mute'] = True
         if 'clock_running' in data:
             state['clock_running'] = bool(data['clock_running'])
-            if state['clock_mode'] == 'stop_time' and state['mute_on_stop']:
+            if phase_has_duration(state['phase']) and state['clock_mode'] == 'stop_time' and state['mute_on_stop']:
                 state['mute'] = not state['clock_running']
         updated_state = current_state_payload()
     print("Updating overlay with data:", data, flush=True)
@@ -1167,6 +1223,8 @@ def index():
         'index.html',
         webrtc_additional_hosts=os.getenv('MTX_WEBRTCADDITIONALHOSTS', ''),
         toggle_buffer_ms=toggle_buffer_ms,
+        phases=phase_configurations,
+        initial_phase=initial_phase_name,
     )
 
 @app.route('/youtube-stop')

@@ -643,11 +643,11 @@ function teamHeadingDisplay(teamName, fallbackName) {
 }
 
 function renderOverlayMock(state) {
-    const isClockIrrelevant = state.period === 'Final' || state.period === 'Shootout';
-    const timeText = isClockIrrelevant ? state.period : state.time;
-    const periodText = isClockIrrelevant ? '' : state.period;
+    const isClockIrrelevant = !state.phase_has_duration;
+    const timeText = isClockIrrelevant ? state.phase : state.time;
+    const phaseText = isClockIrrelevant ? '' : state.phase;
     const timeElement = document.getElementById('overlay-time-text');
-    const periodElement = document.getElementById('overlay-period-text');
+    const phaseElement = document.getElementById('overlay-phase-text');
     document.getElementById('overlay-left-text').textContent = teamDisplay(
         state.left_team,
         state.left_score,
@@ -664,8 +664,8 @@ function renderOverlayMock(state) {
     );
     timeElement.textContent = timeText;
     timeElement.classList.toggle('is-hidden', !timeText);
-    periodElement.textContent = periodText;
-    periodElement.classList.toggle('is-hidden', !periodText);
+    phaseElement.textContent = phaseText;
+    phaseElement.classList.toggle('is-hidden', !phaseText);
     document.getElementById('overlay-mute-icon').classList.toggle('is-hidden', !state.mute);
 }
 
@@ -683,7 +683,7 @@ function currentFormData() {
         right_pp_time: normalizeClockValue(document.getElementById('right-pp-time').value),
         right_en: document.getElementById('right-en').checked,
         clock_mode: selectedClockMode ? selectedClockMode.value : 'stop_time',
-        period: document.getElementById('period').value,
+        phase: document.getElementById('phase').value,
         time: normalizeClockValue(document.getElementById('time').value),
         mute_on_stop: document.getElementById('mute-on-stop').checked
     };
@@ -742,8 +742,8 @@ function renderState(state) {
     if (selectedClockMode) {
         selectedClockMode.checked = true;
     }
-    if (document.activeElement !== document.getElementById('period')) {
-        document.getElementById('period').value = state.period;
+    if (document.activeElement !== document.getElementById('phase')) {
+        document.getElementById('phase').value = state.phase;
     }
     syncInputValue('time', state.time);
     document.getElementById('left-team-heading').textContent = teamHeadingDisplay(
@@ -763,6 +763,7 @@ function renderState(state) {
     const clockMode = state.clock_mode || 'stop_time';
     const clockRunning = Boolean(state.clock_running);
     const isMuted = Boolean(state.mute);
+    const isUntimedPhase = !state.phase_has_duration;
     const announcementButton = document.getElementById('announcement-button');
 
     muteOnStop.checked = Boolean(state.mute_on_stop);
@@ -774,11 +775,11 @@ function renderState(state) {
     clockToggleButton.classList.toggle('stopped', !clockRunning);
     clockToggleButton.classList.toggle('is-hidden', clockMode !== 'run_time');
 
-    if (clockMode === 'stop_time') {
+    if (clockMode === 'stop_time' && !isUntimedPhase) {
         toggleButton.classList.remove('is-hidden');
         toggleButton.textContent = clockRunning ? 'Stop' : 'Start';
         toggleButton.classList.toggle('stopped', !clockRunning);
-    } else if (state.mute_on_stop) {
+    } else if (isUntimedPhase || state.mute_on_stop) {
         toggleButton.classList.remove('is-hidden');
         toggleButton.textContent = isMuted ? 'Un-mute' : 'Mute';
         toggleButton.classList.toggle('stopped', !isMuted);
@@ -822,7 +823,8 @@ async function submitTeamNameUpdate() {
 
 async function togglePrimaryAction() {
     const clockMode = latestState.clock_mode || 'stop_time';
-    if (clockMode === 'stop_time') {
+    const isUntimedPhase = !latestState.phase_has_duration;
+    if (clockMode === 'stop_time' && !isUntimedPhase) {
         await postState({
             ...currentFormData(),
             clock_running: !Boolean(latestState.clock_running)
@@ -830,7 +832,7 @@ async function togglePrimaryAction() {
         return;
     }
 
-    if (latestState.mute_on_stop) {
+    if (isUntimedPhase || latestState.mute_on_stop) {
         await postState({
             ...currentFormData(),
             mute: !Boolean(latestState.mute)
@@ -1045,7 +1047,7 @@ document.getElementById('left-team').addEventListener('blur', submitTeamNameUpda
 document.getElementById('right-team').addEventListener('blur', submitTeamNameUpdate);
 document.getElementById('left-score').addEventListener('blur', submitOverlayUpdate);
 document.getElementById('right-score').addEventListener('blur', submitOverlayUpdate);
-document.getElementById('period').addEventListener('change', submitOverlayUpdate);
+document.getElementById('phase').addEventListener('change', submitOverlayUpdate);
 document.getElementById('time').addEventListener('blur', commitTimeInput);
 document.getElementById('time').addEventListener('keydown', handleTimeInputKeydown);
 document.querySelectorAll('select').forEach((select) => {
@@ -1066,7 +1068,7 @@ document.getElementById('left-pp').addEventListener('change', refreshTeamHeading
 document.getElementById('left-en').addEventListener('change', refreshTeamHeadingsFromInputs);
 document.getElementById('right-pp').addEventListener('change', refreshTeamHeadingsFromInputs);
 document.getElementById('right-en').addEventListener('change', refreshTeamHeadingsFromInputs);
-document.getElementById('period').addEventListener('change', refreshTeamHeadingsFromInputs);
+document.getElementById('phase').addEventListener('change', refreshTeamHeadingsFromInputs);
 document.getElementById('time').addEventListener('input', refreshTeamHeadingsFromInputs);
 document.getElementById('mute-on-stop').addEventListener('change', submitOverlayUpdate);
 document.getElementById('mute-toggle-button').addEventListener('click', toggleMute);

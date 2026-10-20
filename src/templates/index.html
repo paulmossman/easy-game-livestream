@@ -523,7 +523,7 @@
             font-size: 1.35rem;
         }
 
-        .overlay-chip.period {
+        .overlay-chip.phase {
             left: 0;
             bottom: 0;
             font-size: 1rem;
@@ -995,7 +995,7 @@
                         <div id="overlay-left-text" class="overlay-chip left">Left: 0</div>
                         <div id="overlay-right-text" class="overlay-chip right">Right: 0</div>
                         <div id="overlay-time-text" class="overlay-chip time">20:00</div>
-                        <div id="overlay-period-text" class="overlay-chip period">Period 1</div>
+                        <div id="overlay-phase-text" class="overlay-chip phase">{{ initial_phase }}</div>
                         <div id="overlay-mute-icon" class="overlay-mute is-hidden">MUTED</div>
                     </div>
                 </div>
@@ -1033,16 +1033,11 @@
             <section class="panel settings-panel">
                 <div class="clock-controls-grid">
                     <label>
-                        Period
-                        <select id="period">
-                            <option value="Warmup">Warmup</option>
-                            <option value="Period 1" selected>Period 1</option>
-                            <option value="Period 2">Period 2</option>
-                            <option value="Flood">Flood</option>
-                            <option value="Period 3">Period 3</option>
-                            <option value="Final">Final</option>
-                            <option value="OT">OT</option>
-                            <option value="Shootout">Shootout</option>
+                        Phases
+                        <select id="phase">
+                            {% for phase in phases %}
+                            <option value="{{ phase.name }}"{% if phase.name == initial_phase %} selected{% endif %}>{{ phase.name }}</option>
+                            {% endfor %}
                         </select>
                     </label>
                     <label>

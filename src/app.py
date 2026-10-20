@@ -13,6 +13,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from urllib.parse import parse_qs
+import yaml
 from flask import Flask, render_template, request, jsonify, redirect, session, url_for
 from flask_socketio import SocketIO, emit
 from google.oauth2.credentials import Credentials
@@ -22,10 +23,10 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
 # Load config
-config_path = '/app/config/config.json'
+config_path = '/app/config/config.yml'
 if os.path.exists(config_path):
-    with open(config_path) as f:
-        config = json.load(f)
+    with open(config_path, encoding='utf-8') as f:
+        config = yaml.safe_load(f) or {}
 else:
     config = {}
 
@@ -496,8 +497,7 @@ def current_upstream_output_url():
 def save_config():
     with config_lock:
         with open(config_path, 'w', encoding='utf-8') as f:
-            json.dump(config, f, indent=4)
-            f.write('\n')
+            yaml.safe_dump(config, f, sort_keys=False)
 
 def save_runtime_youtube_destination():
     ensure_app_data_dir()
@@ -1261,7 +1261,7 @@ def youtube_oauth_start():
     client_config = google_client_config()
     if client_config is None:
         return jsonify({
-            'error': 'Missing Google OAuth client configuration. Add google_oauth_client_secret.json to config/ or set google_oauth_client_id/google_oauth_client_secret in config.json.'
+            'error': 'Missing Google OAuth client configuration. Add google_oauth_client_secret.json to config/ or set google_oauth_client_id/google_oauth_client_secret in config.yml.'
         }), 400
 
     flow = Flow.from_client_config(client_config, scopes=google_oauth_scopes)

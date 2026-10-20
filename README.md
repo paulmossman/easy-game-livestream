@@ -91,7 +91,7 @@ PWM 1st:
 - The callback URL must match exactly: `http://localhost:5001/api/youtube/oauth/callback`
 - If Google shows `redirect_uri_mismatch`, the redirect URI in Google Cloud does not exactly match the one above.
 - The app stores the resulting OAuth token locally in the container at `/tmp/youtube-oauth-token.json` so you do not need to sign in again until the container is recreated.
-- If `config/config.json` is mounted read-only, OAuth-created YouTube streams still work for the current container session, but the created stream key will not be written back into that file.
+- If `config/config.yml` is mounted read-only, OAuth-created YouTube streams still work for the current container session, but the created stream key will not be written back into that file.
 
 ## Quick Checklist
 
@@ -118,4 +118,4 @@ The application uses MediaMTX to receive the RTMP stream from PRISM, and ffmpeg 
 
 Use `preview_output_url` / `preview_stream_key` for the local RTMP/HLS program feed, `webrtc_preview_output_url` / `webrtc_preview_stream_key` for the low-latency WebRTC preview target, and `youtube_output_url` / `youtube_stream_key` for the upstream RTMP destination.
 
-If you use the optional Web UI `Create New Stream` flow, you can also set `youtube_privacy_status` in `config/config.json` to control the visibility of newly created YouTube broadcasts. Supported values are `public`, `unlisted`, and `private`. If you do not set it, the app currently defaults to `public`. This setting does not affect the manual YouTube Studio flow, since visibility is chosen directly in YouTube Studio there.
+If you use the optional Web UI `Create New Stream` flow, you can also set `youtube_privacy_status` in `config/config.yml` to control the visibility of newly created YouTube broadcasts. Supported values are `public`, `unlisted`, and `private`. If you do not set it, the app currently defaults to `public`. This setting does not affect the manual YouTube Studio flow, since visibility is chosen directly in YouTube Studio there.

@@ -30,8 +30,8 @@ if os.path.exists(config_path):
 else:
     config = {}
 
-team_name_start_values = config.get('web_ui_start_values', {}).get('team_names', {})
-clock_start_values = config.get('web_ui_start_values', {}).get('clock', {})
+team_name_start_values = config.get('team_names', {})
+clock_start_values = config.get('clock', {})
 clock_mode_start_value = config.get('clock_mode', 'stop_time')
 if 'run_time' in clock_start_values:
     clock_mode_start_value = 'run_time' if clock_start_values['run_time'] else 'stop_time'
@@ -1162,7 +1162,7 @@ def apply_overlay_update(data):
 
 @app.route('/')
 def index():
-    toggle_buffer_ms = config.get('web_ui_start_values', {}).get('toggle_buffer_ms', 400)
+    toggle_buffer_ms = config.get('toggle_buffer_ms', 400)
     return render_template(
         'index.html',
         webrtc_additional_hosts=os.getenv('MTX_WEBRTCADDITIONALHOSTS', ''),

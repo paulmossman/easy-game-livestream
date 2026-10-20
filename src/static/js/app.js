@@ -636,21 +636,9 @@ function teamDisplay(teamName, score, ppEnabled, enEnabled, isRightSide) {
     return `${safeTeamName}: ${safeScore}${flags.length ? ` ${flags.join(' ')}` : ''}`;
 }
 
-function teamHeadingDisplay(teamName, ppEnabled, enEnabled, isRightSide) {
-    const safeTeamName = teamName && String(teamName).trim() ? String(teamName).trim() : (isRightSide ? 'Away' : 'Home');
-    const flags = [];
-    if (ppEnabled) {
-        flags.push('PP');
-    }
-    if (enEnabled) {
-        flags.push('EN');
-    }
-
-    if (isRightSide) {
-        return `${flags.length ? `${flags.join(' ')} ` : ''}${safeTeamName}:`;
-    }
-
-    return `${safeTeamName}:${flags.length ? ` ${flags.join(' ')}` : ''}`;
+function teamHeadingDisplay(teamName, fallbackName) {
+    const safeTeamName = String(teamName || '').trim() || fallbackName;
+    return `${safeTeamName}:`;
 }
 
 function renderOverlayMock(state) {
@@ -759,15 +747,11 @@ function renderState(state) {
     syncInputValue('time', state.time);
     document.getElementById('home-team-heading').textContent = teamHeadingDisplay(
         document.getElementById('home-team').value,
-        state.home_pp,
-        state.home_en,
-        false
+        'Home'
     );
     document.getElementById('away-team-heading').textContent = teamHeadingDisplay(
         document.getElementById('away-team').value,
-        state.away_pp,
-        state.away_en,
-        true
+        'Away'
     );
     renderOverlayMock(state);
 
@@ -977,15 +961,11 @@ async function loadInitialState() {
 function refreshTeamHeadingsFromInputs() {
     document.getElementById('home-team-heading').textContent = teamHeadingDisplay(
         document.getElementById('home-team').value,
-        document.getElementById('home-pp').checked,
-        document.getElementById('home-en').checked,
-        false
+        'Home'
     );
     document.getElementById('away-team-heading').textContent = teamHeadingDisplay(
         document.getElementById('away-team').value,
-        document.getElementById('away-pp').checked,
-        document.getElementById('away-en').checked,
-        true
+        'Away'
     );
 }
 

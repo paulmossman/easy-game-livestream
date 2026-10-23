@@ -281,6 +281,11 @@ function drawRelayMetricsChart(samples) {
         return;
     }
 
+    const latestSampleTime = new Date(samples[samples.length - 1].timestamp * 1000);
+    const sampleTimeText = new Intl.DateTimeFormat(undefined, {
+        timeStyle: 'medium'
+    }).format(latestSampleTime);
+
     const pixelRatio = window.devicePixelRatio || 1;
     canvas.width = Math.round(bounds.width * pixelRatio);
     canvas.height = Math.round(bounds.height * pixelRatio);
@@ -297,7 +302,10 @@ function drawRelayMetricsChart(samples) {
     const lanes = [
         {
             key: 'send_mbps',
-            title: 'Output (Mbps)',
+            title: 'Output:',
+            latestValue: typeof samples[samples.length - 1].send_mbps === 'number'
+                ? `${samples[samples.length - 1].send_mbps.toFixed(2)} Mbps`
+                : 'n/a',
             color: '#c45132',
             top: 12,
             height: 56,
@@ -305,7 +313,10 @@ function drawRelayMetricsChart(samples) {
         },
         {
             key: 'speed',
-            title: 'Speed (x real time)',
+            title: 'Speed:',
+            latestValue: typeof samples[samples.length - 1].speed === 'number'
+                ? `${samples[samples.length - 1].speed.toFixed(2)}x`
+                : 'n/a',
             color: '#087f70',
             top: 94,
             height: 56,
@@ -321,6 +332,7 @@ function drawRelayMetricsChart(samples) {
         const plotHeight = plotBottom - plotTop;
         context.fillStyle = '#000';
         context.fillText(lane.title, 0, lane.top + 8);
+        context.fillText(lane.latestValue, context.measureText(lane.title).width + 6, lane.top + 8);
         context.strokeStyle = 'rgba(31, 26, 23, 0.14)';
         context.fillStyle = '#000';
         [0, 0.5, 1].forEach((fraction) => {
@@ -366,10 +378,9 @@ function drawRelayMetricsChart(samples) {
         context.stroke();
     });
 
-    context.fillStyle = '#706b64';
-    context.fillText(`${relayMetricsWindowMinutes} min ago`, left, bounds.height - 2);
-    const nowLabel = 'now';
-    context.fillText(nowLabel, right - context.measureText(nowLabel).width, bounds.height - 2);
+    context.font = '700 11px "Avenir Next", "Helvetica Neue", sans-serif';
+    context.fillStyle = '#000';
+    context.fillText(sampleTimeText, right - context.measureText(sampleTimeText).width, bounds.height - 2);
 }
 
 async function loadRelayMetrics() {
@@ -387,16 +398,6 @@ async function loadRelayMetrics() {
             return;
         }
 
-        const latest = relayMetricSamples[relayMetricSamples.length - 1];
-        const speedText = typeof latest.speed === 'number' ? `${latest.speed.toFixed(2)}x` : 'speed n/a';
-        const rateText = typeof latest.send_mbps === 'number'
-            ? `${latest.send_mbps.toFixed(2)} Mbps`
-            : 'rate warming up';
-        const sampleTime = new Date(latest.timestamp * 1000);
-        const sampleTimeText = new Intl.DateTimeFormat(undefined, {
-            timeStyle: 'medium'
-        }).format(sampleTime);
-        document.getElementById('relay-metrics-summary').textContent = `${speedText} · ${rateText} · ${sampleTimeText}`;
         drawRelayMetricsChart(relayMetricSamples);
     } catch (error) {
         console.warn('Could not load relay metrics', error);

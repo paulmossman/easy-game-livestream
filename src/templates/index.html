@@ -127,8 +127,15 @@
             grid-area: settings;
             padding: 24px;
             display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
             gap: 16px;
             align-content: start;
+        }
+
+        .settings-left-column {
+            display: grid;
+            gap: 16px;
+            min-width: 0;
         }
 
         .youtube-panel {
@@ -668,7 +675,7 @@
 
         .clock-controls-grid {
             display: grid;
-            grid-template-columns: minmax(200px, 0.3fr) minmax(200px, 0.4fr) minmax(250px, 1.25fr) minmax(210px, 1fr);
+            grid-template-columns: repeat(2, minmax(0, 1fr));
             gap: 12px;
             align-items: end;
         }
@@ -893,7 +900,7 @@
             }
 
             .clock-controls-grid {
-                grid-template-columns: minmax(72px, 0.42fr) minmax(180px, 0.325fr);
+                grid-template-columns: repeat(2, minmax(0, 1fr));
             }
         }
 
@@ -912,6 +919,10 @@
             .shared-grid,
             .settings-grid,
             .clock-controls-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .settings-panel {
                 grid-template-columns: 1fr;
             }
 
@@ -1036,7 +1047,8 @@
             </section>
 
             <section class="panel settings-panel">
-                <div class="clock-controls-grid">
+                <div class="settings-left-column">
+                    <div class="clock-controls-grid">
                     <label>
                         Phase
                         <select id="phase">
@@ -1079,6 +1091,17 @@
                             <button type="button" id="mute-toggle-button" class="mute-button is-hidden">Un-mute</button>
                         </div>
                     </div>
+                    </div>
+                    <div class="settings-grid">
+                        <label>
+                            Left
+                            <input type="text" id="left-team" value="Left">
+                        </label>
+                        <label>
+                            Right
+                            <input type="text" id="right-team" value="Right">
+                        </label>
+                    </div>
                 </div>
                 <div class="youtube-panel">
                     <div class="youtube-status-row">
@@ -1105,16 +1128,6 @@
                         <a class="youtube-link" href="/youtube-stop">Stop Stream Page</a>
                     </div>
                     <div id="youtube-channel-list" class="channel-list"></div>
-                </div>
-                <div class="settings-grid">
-                    <label>
-                        Left
-                        <input type="text" id="left-team" value="Left">
-                    </label>
-                    <label>
-                        Right
-                        <input type="text" id="right-team" value="Right">
-                    </label>
                 </div>
             </section>
 

@@ -296,20 +296,20 @@ function drawRelayMetricsChart(samples) {
     const windowStart = windowEnd - windowSeconds;
     const lanes = [
         {
-            key: 'speed',
-            title: 'Speed (x real time)',
-            color: '#087f70',
-            top: 12,
-            height: 56,
-            maximum: Math.max(1.5, Math.ceil(Math.max(...samples.map((sample) => sample.speed || 0)) * 2) / 2)
-        },
-        {
             key: 'send_mbps',
             title: 'Output (Mbps)',
             color: '#c45132',
-            top: 94,
+            top: 12,
             height: 56,
             maximum: Math.max(1, Math.ceil(Math.max(...samples.map((sample) => sample.send_mbps || 0)) * 2) / 2)
+        },
+        {
+            key: 'speed',
+            title: 'Speed (x real time)',
+            color: '#087f70',
+            top: 94,
+            height: 56,
+            maximum: Math.max(1.5, Math.ceil(Math.max(...samples.map((sample) => sample.speed || 0)) * 2) / 2)
         }
     ];
 

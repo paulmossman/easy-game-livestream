@@ -313,16 +313,16 @@ function drawRelayMetricsChart(samples) {
         }
     ];
 
-    context.font = '11px "Avenir Next", "Helvetica Neue", sans-serif';
+    context.font = '700 11px "Avenir Next", "Helvetica Neue", sans-serif';
     context.lineWidth = 1;
     lanes.forEach((lane) => {
         const plotTop = lane.top + 13;
         const plotBottom = lane.top + lane.height;
         const plotHeight = plotBottom - plotTop;
-        context.fillStyle = '#3d3934';
+        context.fillStyle = '#000';
         context.fillText(lane.title, 0, lane.top + 8);
         context.strokeStyle = 'rgba(31, 26, 23, 0.14)';
-        context.fillStyle = '#706b64';
+        context.fillStyle = '#000';
         [0, 0.5, 1].forEach((fraction) => {
             const y = plotBottom - (fraction * plotHeight);
             context.beginPath();

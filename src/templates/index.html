@@ -597,39 +597,34 @@
             min-width: 0;
         }
 
-        .relay-metrics-heading {
-            display: flex;
-            justify-content: space-between;
-            gap: 12px;
-            margin-top: 8px;
-            padding-top: 12px;
-            border-top: 1px solid var(--line);
-            font-size: 0.9rem;
-            font-weight: 800;
+        .relay-metrics-controls {
+            position: absolute;
+            left: 42px;
+            bottom: 0;
+            color: #000;
+            font: 700 11px "Avenir Next", "Helvetica Neue", sans-serif;
         }
 
         .relay-metrics-window {
             display: inline-flex;
-            align-items: center;
-            gap: 6px;
+            align-items: baseline;
+            gap: 3px;
             white-space: nowrap;
         }
 
+        .relay-metrics-chart-wrap {
+            position: relative;
+        }
+
         .relay-metrics-window input {
-            width: 58px;
+            width: 42px;
             min-width: 0;
-            padding: 4px 6px;
+            padding: 1px 3px;
             border: 1px solid var(--line);
             border-radius: 4px;
             color: var(--ink);
             background: var(--panel);
             font: inherit;
-            font-variant-numeric: tabular-nums;
-        }
-
-        .relay-metrics-summary {
-            color: var(--ink);
-            text-align: right;
             font-variant-numeric: tabular-nums;
         }
 
@@ -1112,14 +1107,14 @@
                             <div id="youtube-stream-health" class="status-line is-hidden"></div>
                         </div>
                         <section id="relay-metrics" class="relay-metrics is-hidden" aria-label="YouTube relay metrics">
-                            <canvas id="relay-metrics-chart" role="img" aria-label="Relay speed and send rate over the last 15 minutes"></canvas>
-                            <div class="relay-metrics-heading">
-                                <label class="relay-metrics-window" for="relay-metrics-window">
-                                    Relay, last
-                                    <input id="relay-metrics-window" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="4" value="15" aria-label="Relay chart duration in minutes">
-                                    minutes
-                                </label>
-                                <span id="relay-metrics-summary" class="relay-metrics-summary"></span>
+                            <div class="relay-metrics-chart-wrap">
+                                <canvas id="relay-metrics-chart" role="img" aria-label="Relay speed and send rate over the last 15 minutes"></canvas>
+                                <div class="relay-metrics-controls">
+                                    <label class="relay-metrics-window" for="relay-metrics-window">
+                                        <input id="relay-metrics-window" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="4" value="15" aria-label="Relay chart duration in minutes">
+                                        min ago
+                                    </label>
+                                </div>
                             </div>
                         </section>
                     </div>

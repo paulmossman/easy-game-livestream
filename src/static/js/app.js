@@ -155,14 +155,31 @@ function handlePreviewModeChange(event) {
 
 function setYoutubeStatus(title, detail) {
     document.getElementById('youtube-status').textContent = title;
-    document.getElementById('youtube-detail').textContent = detail;
+    const detailElement = document.getElementById('youtube-detail');
+    detailElement.dataset.statusText = detail;
+    delete detailElement.dataset.broadcastUrl;
+    delete detailElement.dataset.broadcastText;
+    renderYouTubeDetail();
 }
 
 function setYouTubeLiveMeta(text = '') {
-    const meta = document.getElementById('youtube-live-meta');
-    const hasText = Boolean(text);
-    meta.textContent = text;
-    meta.classList.toggle('is-hidden', !hasText);
+    document.getElementById('youtube-detail').dataset.liveMeta = text;
+    renderYouTubeDetail();
+}
+
+function renderYouTubeDetail() {
+    const detail = document.getElementById('youtube-detail');
+    const primaryText = detail.dataset.broadcastText || detail.dataset.statusText || '';
+    const liveMeta = detail.dataset.liveMeta || '';
+    detail.textContent = [primaryText, liveMeta].filter(Boolean).join(' · ');
+
+    if (detail.dataset.broadcastUrl) {
+        detail.href = detail.dataset.broadcastUrl;
+        detail.classList.add('youtube-link');
+    } else {
+        detail.removeAttribute('href');
+        detail.classList.remove('youtube-link');
+    }
 }
 
 function setYouTubeStreamHealth(text = '') {
@@ -468,15 +485,15 @@ async function maybeAutoCreateYouTubeStream() {
 }
 
 function renderYouTubeBroadcastLink(data) {
-    const link = document.getElementById('youtube-broadcast-link');
+    const link = document.getElementById('youtube-detail');
     if (data && data.broadcast_url) {
-        link.href = data.broadcast_url;
-        link.textContent = `Open "${data.broadcast_title || data.title || 'YouTube broadcast'}"`;
-        link.classList.remove('is-hidden');
-        return;
+        link.dataset.broadcastUrl = data.broadcast_url;
+        link.dataset.broadcastText = `Open "${data.broadcast_title || data.title || 'YouTube broadcast'}"`;
+    } else {
+        delete link.dataset.broadcastUrl;
+        delete link.dataset.broadcastText;
     }
-
-    link.classList.add('is-hidden');
+    renderYouTubeDetail();
 }
 
 function renderYouTubeActions(data, canStop = false) {
@@ -606,8 +623,8 @@ async function createYouTubeStream(channelId) {
     window.sessionStorage.removeItem(youtubeCreatePendingKey);
     youtubeChannels = [];
     renderYouTubeChannels([]);
-    renderYouTubeActions(data, true);
     setYoutubeStatus(data.channel_title || 'YouTube ready', data.title || 'Broadcast created.');
+    renderYouTubeActions(data, true);
     await loadYouTubeStatus();
 }
 function meterWidthFromDb(audioDb) {

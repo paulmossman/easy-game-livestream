@@ -316,7 +316,7 @@ function drawRelayMetricsChart(samples) {
     context.font = '700 11px "Avenir Next", "Helvetica Neue", sans-serif';
     context.lineWidth = 1;
     lanes.forEach((lane) => {
-        const plotTop = lane.top + 13;
+        const plotTop = lane.top + 20;
         const plotBottom = lane.top + lane.height;
         const plotHeight = plotBottom - plotTop;
         context.fillStyle = '#000';

@@ -285,6 +285,7 @@ function drawRelayMetricsChart(samples) {
     const sampleTimeText = new Intl.DateTimeFormat(undefined, {
         timeStyle: 'medium'
     }).format(latestSampleTime);
+    document.getElementById('relay-metrics-sample-time').textContent = sampleTimeText;
 
     const pixelRatio = window.devicePixelRatio || 1;
     canvas.width = Math.round(bounds.width * pixelRatio);
@@ -378,9 +379,6 @@ function drawRelayMetricsChart(samples) {
         context.stroke();
     });
 
-    context.font = '700 11px "Avenir Next", "Helvetica Neue", sans-serif';
-    context.fillStyle = '#000';
-    context.fillText(sampleTimeText, right - context.measureText(sampleTimeText).width, bounds.height - 2);
 }
 
 async function loadRelayMetrics() {

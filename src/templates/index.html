@@ -45,6 +45,12 @@
             padding: 24px;
         }
 
+        @media (min-width: 577px) {
+            body {
+                zoom: 0.8;
+            }
+        }
+
         .board {
             display: grid;
             grid-template-columns: minmax(240px, 1fr) minmax(320px, 1.15fr) minmax(240px, 1fr);
@@ -605,6 +611,15 @@
             font: 700 11px "Avenir Next", "Helvetica Neue", sans-serif;
         }
 
+        .relay-metrics-sample-time {
+            position: absolute;
+            right: 8px;
+            bottom: 0;
+            color: #000;
+            font: 700 11px "Avenir Next", "Helvetica Neue", sans-serif;
+            white-space: nowrap;
+        }
+
         .relay-metrics-window {
             display: inline-flex;
             align-items: baseline;
@@ -614,6 +629,7 @@
 
         .relay-metrics-chart-wrap {
             position: relative;
+            padding-bottom: 36px;
         }
 
         .relay-metrics-window input {
@@ -856,7 +872,7 @@
             cursor: not-allowed;
         }
 
-        @media (max-width: 1100px) {
+        @media (max-width: 880px) {
             .board {
                 grid-template-columns: 1fr 1fr;
                 grid-template-areas:
@@ -899,7 +915,7 @@
             }
         }
 
-        @media (max-width: 720px) {
+        @media (max-width: 576px) {
             .board {
                 grid-template-columns: 1fr;
                 grid-template-areas:
@@ -1109,6 +1125,7 @@
                         <section id="relay-metrics" class="relay-metrics is-hidden" aria-label="YouTube relay metrics">
                             <div class="relay-metrics-chart-wrap">
                                 <canvas id="relay-metrics-chart" role="img" aria-label="Relay speed and send rate over the last 15 minutes"></canvas>
+                                <div id="relay-metrics-sample-time" class="relay-metrics-sample-time" aria-hidden="true"></div>
                                 <div class="relay-metrics-controls">
                                     <label class="relay-metrics-window" for="relay-metrics-window">
                                         <input id="relay-metrics-window" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="4" value="15" aria-label="Relay chart duration in minutes">

@@ -3,8 +3,10 @@ let youtubeChannels = [];
 let latestState = {};
 let previewHls = null;
 let relayMetricSamples = [];
+let relayHealthSamples = [];
 const youtubeCreatePendingKey = 'youtube-create-pending';
-const youtubeStatusPollIntervalMs = 15000;
+const relayMetricsPollIntervalMs = 5000;
+const metricsTicksPerYouTubeStatusPoll = 6;
 const relayMetricsWindowStorageKey = 'relay-metrics-window-minutes';
 const previewModeStorageKey = 'preview-mode';
 const previewHostStorageKey = 'webrtc-preview-host';
@@ -300,6 +302,10 @@ function drawRelayMetricsChart(samples) {
     const windowEnd = Date.now() / 1000;
     const windowSeconds = relayMetricsWindowMinutes * 60;
     const windowStart = windowEnd - windowSeconds;
+    const visibleHealthSamples = relayHealthSamples.filter((sample) => (
+        sample.timestamp >= windowStart && sample.timestamp <= windowEnd
+    ));
+    const healthSymbols = { good: '✅', ok: '⚠️', bad: '🔻', noData: '❓' };
     const lanes = [
         {
             key: 'send_mbps',
@@ -319,7 +325,7 @@ function drawRelayMetricsChart(samples) {
                 ? `${samples[samples.length - 1].speed.toFixed(2)}x`
                 : 'n/a',
             color: '#087f70',
-            top: 94,
+            top: 140,
             height: 56,
             maximum: Math.max(1.5, Math.ceil(Math.max(...samples.map((sample) => sample.speed || 0)) * 2) / 2)
         }
@@ -327,6 +333,23 @@ function drawRelayMetricsChart(samples) {
 
     context.font = '700 11px "Avenir Next", "Helvetica Neue", sans-serif';
     context.lineWidth = 1;
+    const healthTitle = 'Overall stream health';
+    context.fillStyle = '#000';
+    context.fillText(healthTitle, 0, 90);
+    context.strokeStyle = 'rgba(31, 26, 23, 0.14)';
+    context.beginPath();
+    context.moveTo(left, 122);
+    context.lineTo(right, 122);
+    context.stroke();
+    const healthMarkerFontSize = Math.min(14, Math.max(8, chartWidth / Math.max(1, visibleHealthSamples.length) * 0.9));
+    context.font = `${healthMarkerFontSize}px "Apple Color Emoji", "Segoe UI Emoji", sans-serif`;
+    context.textAlign = 'center';
+    visibleHealthSamples.forEach((sample) => {
+        const x = left + (Math.max(0, Math.min(1, (sample.timestamp - windowStart) / windowSeconds)) * chartWidth);
+        context.fillText(healthSymbols[sample.status] || 'ℹ️', x, 124);
+    });
+    context.textAlign = 'start';
+    context.font = '700 11px "Avenir Next", "Helvetica Neue", sans-serif';
     lanes.forEach((lane) => {
         const plotTop = lane.top + 20;
         const plotBottom = lane.top + lane.height;
@@ -336,26 +359,17 @@ function drawRelayMetricsChart(samples) {
         context.fillText(lane.latestValue, context.measureText(lane.title).width + 6, lane.top + 8);
         context.strokeStyle = 'rgba(31, 26, 23, 0.14)';
         context.fillStyle = '#000';
-        [0, 0.5, 1].forEach((fraction) => {
+        context.font = '700 11px "Avenir Next", "Helvetica Neue", sans-serif';
+        const axisValues = [0, lane.maximum / 2, lane.maximum];
+        axisValues.forEach((value) => {
+            const fraction = value / lane.maximum;
             const y = plotBottom - (fraction * plotHeight);
             context.beginPath();
             context.moveTo(left, y);
             context.lineTo(right, y);
             context.stroke();
-            context.fillText((lane.maximum * fraction).toFixed(lane.maximum < 2 ? 1 : 0), 0, y + 4);
+            context.fillText(value.toFixed(lane.maximum < 2 ? 1 : 0), 0, y);
         });
-
-        if (lane.key === 'speed' && lane.maximum >= 1) {
-            const realtimeY = plotBottom - (plotHeight / lane.maximum);
-            context.save();
-            context.setLineDash([4, 4]);
-            context.strokeStyle = '#a8462d';
-            context.beginPath();
-            context.moveTo(left, realtimeY);
-            context.lineTo(right, realtimeY);
-            context.stroke();
-            context.restore();
-        }
 
         context.strokeStyle = lane.color;
         context.lineWidth = 2;
@@ -408,7 +422,7 @@ function updateRelayMetricsWindowLabels() {
     document.querySelector('#relay-metrics-window').setAttribute('aria-valuetext', `${minutes} minutes`);
     document.querySelector('#relay-metrics-chart').setAttribute(
         'aria-label',
-        `Relay speed and send rate over the last ${minutes} minutes`
+        `Relay output, overall stream health, and speed over the last ${minutes} minutes`
     );
 }
 
@@ -499,14 +513,31 @@ function renderYouTubeActions(data, canStop = false) {
     renderYouTubeBroadcastLink(data);
 }
 
-async function loadYouTubeStatus() {
+function recordYouTubeHealthSample(activeDestination) {
+    const healthStatus = activeDestination?.stream_status?.healthStatus?.status;
+    const status = healthStatus || 'noData';
+    const timestamp = Date.now() / 1000;
+    relayHealthSamples.push({ timestamp, status });
+    relayHealthSamples = relayHealthSamples.filter((sample) => timestamp - sample.timestamp <= 86400);
+    if (relayMetricSamples.length) {
+        drawRelayMetricsChart(relayMetricSamples);
+    }
+}
+
+async function loadYouTubeStatus(recordHealthSample = false) {
     const response = await fetch('/api/youtube/status');
     if (!response.ok) {
         setYoutubeStatus('YouTube unavailable', 'Could not load YouTube connection status.');
+        if (recordHealthSample) {
+            recordYouTubeHealthSample(null);
+        }
         return;
     }
 
     const data = await response.json();
+    if (recordHealthSample) {
+        recordYouTubeHealthSample(data.active_destination);
+    }
     youtubeChannels = Array.isArray(data.channel_choices) ? data.channel_choices : [];
     const oauthConfigured = Boolean(data.oauth_configured);
 
@@ -1124,7 +1155,13 @@ window.addEventListener('resize', () => drawRelayMetricsChart(relayMetricSamples
 initializePreviewPlayer();
 initializeRelayMetricsWindow();
 loadInitialState();
-loadYouTubeStatus();
+loadYouTubeStatus(true);
 loadRelayMetrics();
-window.setInterval(loadYouTubeStatus, youtubeStatusPollIntervalMs);
-window.setInterval(loadRelayMetrics, 5000);
+let metricsPollCount = 0;
+window.setInterval(() => {
+    loadRelayMetrics();
+    metricsPollCount += 1;
+    if (metricsPollCount % metricsTicksPerYouTubeStatusPoll === 0) {
+        loadYouTubeStatus(true);
+    }
+}, relayMetricsPollIntervalMs);

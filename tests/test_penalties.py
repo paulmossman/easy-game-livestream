@@ -160,6 +160,21 @@ class PenaltyStateMachineTests(unittest.TestCase):
         self.assertIs(penalty.status, PenaltyStatus.SERVED)
         self.assertEqual(game.strength, "5-on-5")
 
+    def test_penalty_type_change_resets_standard_duration(self):
+        game = PenaltyStateMachine()
+        penalty = game.assess_penalty(Team.AWAY, "Player")
+        game.set_remaining_seconds(penalty.id, 75)
+
+        self.assertIs(game.set_penalty_kind(penalty.id, PenaltyType.DOUBLE_MINOR), penalty)
+        self.assertEqual(penalty.duration_seconds, 240)
+        self.assertEqual(penalty.remaining_seconds, 240)
+        self.assertEqual(penalty.segments_remaining, 2)
+
+        game.set_penalty_kind(penalty.id, PenaltyType.MAJOR)
+        self.assertEqual(penalty.duration_seconds, 300)
+        self.assertEqual(penalty.remaining_seconds, 300)
+        self.assertEqual(penalty.segments_remaining, 1)
+
     def test_game_clock_adjustment_changes_active_penalty_time_only(self):
         game = PenaltyStateMachine()
         active, _, queued = game.assess_penalties([

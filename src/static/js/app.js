@@ -721,13 +721,9 @@ function currentFormData() {
     return {
         left_team: document.getElementById('left-team').value,
         left_score: document.getElementById('left-score').value,
-        left_pp: document.getElementById('left-pp').checked,
-        left_pp_time: normalizeClockValue(document.getElementById('left-pp-time').value),
         left_en: document.getElementById('left-en').checked,
         right_team: document.getElementById('right-team').value,
         right_score: document.getElementById('right-score').value,
-        right_pp: document.getElementById('right-pp').checked,
-        right_pp_time: normalizeClockValue(document.getElementById('right-pp-time').value),
         right_en: document.getElementById('right-en').checked,
         clock_mode: selectedClockMode ? selectedClockMode.value : 'stop_time',
         phase: document.getElementById('phase').value,
@@ -777,14 +773,12 @@ function renderState(state) {
     updatePreviewAudioWarning(state);
     syncInputValue('left-team', state.left_team);
     syncInputValue('left-score', state.left_score);
-    document.getElementById('left-pp').checked = Boolean(state.left_pp);
-    syncInputValue('left-pp-time', state.left_pp_time || '');
     document.getElementById('left-en').checked = Boolean(state.left_en);
     syncInputValue('right-team', state.right_team);
     syncInputValue('right-score', state.right_score);
-    document.getElementById('right-pp').checked = Boolean(state.right_pp);
-    syncInputValue('right-pp-time', state.right_pp_time || '');
     document.getElementById('right-en').checked = Boolean(state.right_en);
+    renderPenaltyList('home', state.penalties || []);
+    renderPenaltyList('away', state.penalties || []);
     const selectedClockMode = document.querySelector(`input[name="clock-mode"][value="${state.clock_mode || 'stop_time'}"]`);
     if (selectedClockMode) {
         selectedClockMode.checked = true;
@@ -898,10 +892,160 @@ async function toggleClockRunning() {
 }
 
 async function incrementScore(scoreFieldId) {
-    const scoreField = document.getElementById(scoreFieldId);
-    const currentValue = Number.parseInt(scoreField.value, 10);
-    scoreField.value = Number.isNaN(currentValue) ? '1' : String(currentValue + 1);
-    await postState(currentFormData());
+    const team = scoreFieldId === 'left-score' ? 'home' : 'away';
+    const response = await fetch(`/api/goals/${team}`, { method: 'POST' });
+    if (!response.ok) {
+        console.error('Goal update failed', response.status);
+    }
+}
+
+function formatPenaltyTime(seconds) {
+    const remaining = Math.ceil(seconds);
+    return `${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, '0')}`;
+}
+
+function penaltiesByExpiration(penalties) {
+    const active = penalties
+        .filter((penalty) => penalty.status === 'active')
+        .map((penalty) => ({ penalty, remaining: Number(penalty.remaining_seconds) }));
+    const queued = penalties
+        .filter((penalty) => penalty.status === 'queued')
+        .sort((left, right) => left.id - right.id);
+    const expirationTimes = new Map();
+    let elapsed = 0;
+
+    while (active.length > 0 || queued.length > 0) {
+        while (queued.length > 0 && active.filter((item) => !item.penalty.offset).length < 2) {
+            const penalty = queued.shift();
+            active.push({ penalty, remaining: Number(penalty.remaining_seconds) });
+        }
+        if (active.length === 0) {
+            break;
+        }
+
+        const step = Math.min(...active.map((item) => item.remaining));
+        elapsed += step;
+        active.forEach((item) => {
+            item.remaining -= step;
+        });
+        active.filter((item) => item.remaining <= 0).forEach((item) => {
+            expirationTimes.set(item.penalty.id, elapsed);
+        });
+        active.splice(0, active.length, ...active.filter((item) => item.remaining > 0));
+    }
+
+    return [...penalties].sort((left, right) => {
+        const leftTime = expirationTimes.get(left.id) ?? Number.POSITIVE_INFINITY;
+        const rightTime = expirationTimes.get(right.id) ?? Number.POSITIVE_INFINITY;
+        return leftTime - rightTime || left.id - right.id;
+    });
+}
+
+function renderPenaltyList(team, penalties) {
+    const list = document.getElementById(`${team === 'home' ? 'left' : 'right'}-penalties`);
+    const teamPenalties = penaltiesByExpiration(penalties.filter((penalty) => penalty.team === team));
+    const activeIds = new Set(teamPenalties.map((penalty) => String(penalty.id)));
+    list.querySelectorAll('.penalty-row').forEach((row) => {
+        if (!activeIds.has(row.dataset.penaltyId)) {
+            row.remove();
+        }
+    });
+    teamPenalties.forEach((penalty) => {
+        let row = list.querySelector(`[data-penalty-id="${penalty.id}"]`);
+        if (!row) {
+            row = document.createElement('div');
+            row.className = 'penalty-row';
+            row.dataset.penaltyId = String(penalty.id);
+            row.innerHTML = '<input class="pp-time-input" type="text" inputmode="numeric"><div class="penalty-kind-controls"><button class="penalty-kind-button" type="button" data-kind="minor" aria-pressed="false">Minor</button><button class="penalty-kind-button" type="button" data-kind="double_minor" aria-pressed="false">Double Minor</button><button class="penalty-kind-button" type="button" data-kind="major" aria-pressed="false">Major</button></div><span class="penalty-status"></span><button class="penalty-remove" type="button" aria-label="Cancel penalty">×</button>';
+            const timer = row.querySelector('input');
+            timer.setAttribute('aria-label', 'Penalty time remaining');
+            timer.addEventListener('keydown', handlePenaltyTimeKeydown);
+            timer.addEventListener('blur', commitPenaltyTime);
+            row.querySelector('.penalty-remove').addEventListener('click', async () => {
+                const response = await fetch(`/api/penalties/${penalty.id}`, { method: 'DELETE' });
+                if (!response.ok) {
+                    console.error('Penalty cancellation failed', response.status);
+                }
+            });
+            row.querySelectorAll('.penalty-kind-button').forEach((button) => {
+                button.addEventListener('click', async () => {
+                    const response = await fetch(`/api/penalties/${row.dataset.penaltyId}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ kind: button.dataset.kind })
+                    });
+                    if (!response.ok) {
+                        console.error('Penalty type update failed', response.status);
+                    }
+                });
+            });
+            list.append(row);
+        }
+
+        const timer = row.querySelector('.pp-time-input');
+        timer.dataset.penaltyId = String(penalty.id);
+        timer.dataset.previousSeconds = String(penalty.remaining_seconds);
+        if (document.activeElement !== timer) {
+            timer.value = formatPenaltyTime(penalty.remaining_seconds);
+        }
+        row.querySelector('.penalty-status').textContent = penalty.status === 'queued' ? 'queued' : '';
+        row.querySelectorAll('.penalty-kind-button').forEach((button) => {
+            button.setAttribute('aria-pressed', String(penalty.kind === button.dataset.kind));
+        });
+        list.append(row);
+    });
+}
+
+async function commitPenaltyTime(event) {
+    const input = event.target;
+    const normalizedTime = normalizeClockValue(input.value);
+    const secondsMatch = /^(\d+):([0-5]\d)$/.exec(normalizedTime);
+    if (!secondsMatch) {
+        input.value = formatPenaltyTime(Number(input.dataset.previousSeconds || 0));
+        return;
+    }
+    input.value = normalizedTime;
+    const response = await fetch(`/api/penalties/${input.dataset.penaltyId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ remaining_time: normalizedTime })
+    });
+    if (!response.ok) {
+        console.error('Penalty time update failed', response.status);
+    }
+}
+
+function handlePenaltyTimeKeydown(event) {
+    if (event.key === 'Enter') {
+        event.preventDefault();
+        event.stopPropagation();
+        event.target.blur();
+    } else if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        event.target.value = formatPenaltyTime(Number(event.target.dataset.previousSeconds || 0));
+        event.target.blur();
+    }
+}
+
+async function addPenalty(team) {
+    await postPenaltyAddition({ team });
+}
+
+async function addOffsettingPenalties(teams) {
+    await postPenaltyAddition({ teams });
+}
+
+async function postPenaltyAddition(payload) {
+    const response = await fetch('/api/penalties', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+    if (!response.ok) {
+        const result = await response.json();
+        window.alert(result.error || 'Could not add penalty');
+    }
 }
 
 async function adjustClockTime(secondsDelta) {
@@ -1082,9 +1226,7 @@ document.querySelectorAll('.time-adjust-button').forEach((button) => {
 });
 document.getElementById('time-decrement').addEventListener('click', () => adjustClockTime(-1));
 document.getElementById('time-increment').addEventListener('click', () => adjustClockTime(1));
-document.getElementById('left-pp').addEventListener('change', submitOverlayUpdate);
 document.getElementById('left-en').addEventListener('change', submitOverlayUpdate);
-document.getElementById('right-pp').addEventListener('change', submitOverlayUpdate);
 document.getElementById('right-en').addEventListener('change', submitOverlayUpdate);
 document.querySelectorAll('input[name="clock-mode"]').forEach((radio) => {
     radio.addEventListener('change', submitOverlayUpdate);
@@ -1103,17 +1245,9 @@ document.querySelectorAll('select').forEach((select) => {
 document.querySelectorAll('input[type="checkbox"]').forEach((checkbox) => {
     checkbox.addEventListener('change', () => checkbox.blur());
 });
-document.querySelectorAll('.pp-time-input').forEach((input) => {
-    input.addEventListener('blur', async (event) => {
-        event.target.value = normalizeClockValue(event.target.value);
-        await submitOverlayUpdate();
-    });
-});
 document.getElementById('left-score').addEventListener('input', refreshTeamHeadingsFromInputs);
 document.getElementById('right-score').addEventListener('input', refreshTeamHeadingsFromInputs);
-document.getElementById('left-pp').addEventListener('change', refreshTeamHeadingsFromInputs);
 document.getElementById('left-en').addEventListener('change', refreshTeamHeadingsFromInputs);
-document.getElementById('right-pp').addEventListener('change', refreshTeamHeadingsFromInputs);
 document.getElementById('right-en').addEventListener('change', refreshTeamHeadingsFromInputs);
 document.getElementById('phase').addEventListener('change', refreshTeamHeadingsFromInputs);
 document.getElementById('time').addEventListener('input', refreshTeamHeadingsFromInputs);
@@ -1122,6 +1256,12 @@ document.getElementById('mute-toggle-button').addEventListener('click', toggleMu
 document.getElementById('create-stream-button').addEventListener('click', handleCreateStreamClick);
 document.getElementById('left-team').addEventListener('input', refreshTeamHeadingsFromInputs);
 document.getElementById('right-team').addEventListener('input', refreshTeamHeadingsFromInputs);
+document.querySelectorAll('.penalty-add').forEach((button) => {
+    button.addEventListener('click', () => addPenalty(button.dataset.team));
+});
+document.querySelectorAll('.penalty-add-both').forEach((button) => {
+    button.addEventListener('click', () => addOffsettingPenalties(['home', 'away']));
+});
 document.getElementById('show-video').addEventListener('change', (event) => setPreviewVisibility(event.target.checked));
 document.getElementById('preview-advanced-button').addEventListener('click', () => {
     document.getElementById('preview-settings-dialog').showModal();

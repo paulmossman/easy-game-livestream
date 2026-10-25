@@ -203,6 +203,19 @@ class PenaltyStateMachine:
             penalty.segments_remaining = 2 if penalty.remaining_seconds > MINOR_SEGMENT_SECONDS else 1
         return penalty
 
+    def set_penalty_kind(self, penalty_id: int, kind: PenaltyType) -> Optional[Penalty]:
+        penalty = next((item for item in self.penalties if item.id == penalty_id), None)
+        if penalty is None or penalty.status not in (PenaltyStatus.ACTIVE, PenaltyStatus.QUEUED):
+            return None
+        normalized_kind = self._kind(kind)
+        if penalty.kind is normalized_kind:
+            return penalty
+        penalty.kind = normalized_kind
+        penalty.duration_seconds = float(DEFAULT_DURATIONS[normalized_kind])
+        penalty.remaining_seconds = penalty.duration_seconds
+        penalty.segments_remaining = 2 if normalized_kind is PenaltyType.DOUBLE_MINOR else 1
+        return penalty
+
     def adjust_remaining_seconds(self, seconds_delta: float) -> None:
         active_penalties = [p for p in self.penalties if p.status is PenaltyStatus.ACTIVE]
         for penalty in active_penalties:

@@ -21,6 +21,7 @@ from google.auth.transport.requests import Request as GoogleAuthRequest
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+from penalties import PenaltyAssessment, PenaltyStateMachine, PenaltyType, Team
 
 # Load config
 config_filename = os.getenv('APP_CONFIG_FILE') or 'config.yml'
@@ -105,6 +106,7 @@ state = {
     'incoming_audio_active': False,
     'incoming_stream_ready': False,
 }
+penalty_game = PenaltyStateMachine()
 ffmpeg_process = None
 relay_ffmpeg_process = None
 relay_metrics_session_id = None
@@ -157,6 +159,7 @@ overlay_right_text_path = '/tmp/overlay-right.txt'
 overlay_phase_text_path = '/tmp/overlay-phase.txt'
 overlay_time_text_path = '/tmp/overlay-time.txt'
 overlay_mute_text_path = '/tmp/overlay-mute.txt'
+overlay_strength_text_path = '/tmp/overlay-strength.txt'
 last_overlay_signature = None
 
 def ensure_app_data_dir():
@@ -325,8 +328,10 @@ def watch_relay_progress(process, session_id):
             progress = {}
 
 def current_overlay_text():
-    left_flags = ' '.join(flag for flag, enabled in [('PP', state['left_pp']), ('EN', state['left_en'])] if enabled)
-    right_flags = ' '.join(flag for flag, enabled in [('PP', state['right_pp']), ('EN', state['right_en'])] if enabled)
+    left_power_play = state['left_pp'] or penalty_game.power_play_team is Team.HOME
+    right_power_play = state['right_pp'] or penalty_game.power_play_team is Team.AWAY
+    left_flags = ' '.join(flag for flag, enabled in [('PP', left_power_play), ('EN', state['left_en'])] if enabled)
+    right_flags = ' '.join(flag for flag, enabled in [('PP', right_power_play), ('EN', state['right_en'])] if enabled)
     left_team = state['left_team'] or 'Left'
     right_team = state['right_team'] or 'Right'
     left_display = f"{left_team}: {state['left_score']}" + (f" {left_flags}" if left_flags else '')
@@ -343,6 +348,7 @@ def current_overlay_text():
         'right': right_display,
         'phase': phase_text,
         'time': time_text,
+        'strength': penalty_game.strength if penalty_game.strength != '5-on-5' else '',
         'mute': 'MUTED' if state['mute'] else '',
     }
 
@@ -376,6 +382,7 @@ def write_overlay_text(force=False):
     write_text_file(overlay_right_text_path, overlay_text['right'])
     write_text_file(overlay_phase_text_path, overlay_text['phase'])
     write_text_file(overlay_time_text_path, overlay_text['time'])
+    write_text_file(overlay_strength_text_path, overlay_text['strength'])
     write_text_file(overlay_mute_text_path, overlay_text['mute'])
     last_overlay_signature = current_signature
     print("Overlay text updated", flush=True)
@@ -383,6 +390,23 @@ def write_overlay_text(force=False):
 
 def current_state_payload():
     payload = dict(state)
+    power_play_team = penalty_game.power_play_team
+    payload['left_pp'] = state['left_pp'] or power_play_team is Team.HOME
+    payload['right_pp'] = state['right_pp'] or power_play_team is Team.AWAY
+    payload['manpower'] = penalty_game.strength
+    payload['penalties'] = [
+        {
+            'id': penalty.id,
+            'team': penalty.team.value,
+            'player': penalty.player,
+            'kind': penalty.kind.value,
+            'remaining_seconds': penalty.remaining_seconds,
+            'status': penalty.status.value,
+            'segments_remaining': penalty.segments_remaining,
+            'offset': penalty.is_offset,
+        }
+        for penalty in penalty_game.active_penalties()
+    ]
     payload['phase_has_duration'] = phase_has_duration(state['phase'])
     return payload
 
@@ -502,6 +526,7 @@ def tick_game_clock():
             else:
                 state['time'] = format_clock(remaining_seconds - 1)
                 adjust_pp_times(-1)
+                penalty_game.advance(1)
                 if parse_clock(state['time']) == 0:
                     state['clock_running'] = False
                     next_phase = next_phase_name() if phase_has_duration(state['phase']) else None
@@ -1062,7 +1087,8 @@ def run_ffmpeg():
             f"[v_left]drawtext=fontfile={primary_font_path}:textfile={overlay_right_text_path}:reload=1:fontcolor=white:fontsize=38:box=1:boxcolor=black@0.69:boxborderw=18:x=w-tw-18:y=18[v_right]",
             f"[v_right]drawtext=fontfile={primary_font_path}:textfile={overlay_time_text_path}:reload=1:fontcolor=white:fontsize=44:box=1:boxcolor=black@0.69:boxborderw=18:x=(w-tw)/2:y=18[v_time]",
             f"[v_time]drawtext=fontfile={primary_font_path}:textfile={overlay_phase_text_path}:reload=1:fontcolor=white:fontsize=32:box=1:boxcolor=black@0.69:boxborderw=18:x=18:y=h-th-18[v_phase]",
-            f"[v_phase]drawtext=fontfile={primary_font_path}:textfile={overlay_mute_text_path}:reload=1:fontcolor=white@0.76:fontsize=38:x=w-tw-34:y=h-th-72[v_composited]",
+            f"[v_phase]drawtext=fontfile={primary_font_path}:textfile={overlay_strength_text_path}:reload=1:fontcolor=white:fontsize=32:box=1:boxcolor=black@0.69:boxborderw=18:x=(w-tw)/2:y=h-th-18[v_strength]",
+            f"[v_strength]drawtext=fontfile={primary_font_path}:textfile={overlay_mute_text_path}:reload=1:fontcolor=white@0.76:fontsize=38:x=w-tw-34:y=h-th-72[v_composited]",
             '[v_composited]split=2[v_preview][v_webrtc]',
             f'[0:a]{audio_control_target}=volume={current_volume_level()},asplit=2[a_preview][a_webrtc]',
         ])
@@ -1181,6 +1207,7 @@ def apply_overlay_update(data):
             apply_phase_defaults(state['phase'])
         if clock_adjustment_seconds:
             adjust_pp_times(clock_adjustment_seconds)
+            penalty_game.adjust_remaining_seconds(clock_adjustment_seconds)
         # The UI posts the full form for mute/unmute actions, so `time` can be
         # present even when the operator did not edit the clock. Also, changing
         # clock mode or phase should not stop or start the clock by itself.
@@ -1251,6 +1278,73 @@ def update_state():
     if 'clock_running' in data and not isinstance(data['clock_running'], bool):
         data['clock_running'] = str(data['clock_running']).lower() in ('1', 'true', 'yes', 'on')
     updated_state = apply_overlay_update(data)
+    return jsonify(updated_state)
+
+@app.route('/api/penalties', methods=['POST'])
+def add_penalty():
+    data = request.get_json(silent=True) or {}
+    player = str(data.get('player', 'Player')).strip()
+    try:
+        requested_teams = data.get('teams')
+        if requested_teams is None:
+            teams = [Team(data.get('team'))]
+        elif not isinstance(requested_teams, list) or not requested_teams:
+            raise ValueError('teams must be a non-empty list')
+        else:
+            teams = [Team(team) for team in requested_teams]
+        kind = PenaltyType(data.get('kind', PenaltyType.MINOR.value))
+        if not player:
+            raise ValueError('player is required')
+        with state_lock:
+            penalty_game.assess_penalties([
+                PenaltyAssessment(team, player, kind) for team in teams
+            ])
+            updated_state = current_state_payload()
+    except (TypeError, ValueError) as error:
+        return jsonify({'error': str(error)}), 400
+    write_overlay_text()
+    socketio.emit('state_updated', updated_state)
+    return jsonify(updated_state)
+
+@app.route('/api/penalties/<int:penalty_id>', methods=['DELETE', 'PATCH'])
+def update_penalty(penalty_id):
+    with state_lock:
+        if request.method == 'DELETE':
+            penalty = penalty_game.cancel_penalty(penalty_id)
+        else:
+            data = request.get_json(silent=True) or {}
+            try:
+                if 'kind' in data:
+                    penalty = penalty_game.set_penalty_kind(penalty_id, PenaltyType(data['kind']))
+                elif 'remaining_time' in data:
+                    seconds = parse_clock(data['remaining_time'])
+                    if seconds is None:
+                        return jsonify({'error': 'remaining_time must be a valid M:SS value'}), 400
+                    penalty = penalty_game.set_remaining_seconds(penalty_id, seconds)
+                else:
+                    return jsonify({'error': 'kind or remaining_time is required'}), 400
+            except (TypeError, ValueError) as error:
+                return jsonify({'error': str(error)}), 400
+        if penalty is None:
+            return jsonify({'error': 'active penalty not found'}), 404
+        updated_state = current_state_payload()
+    write_overlay_text()
+    socketio.emit('state_updated', updated_state)
+    return jsonify(updated_state)
+
+@app.route('/api/goals/<team>', methods=['POST'])
+def record_goal(team):
+    try:
+        scoring_team = Team(team)
+    except ValueError:
+        return jsonify({'error': 'team must be home or away'}), 400
+    with state_lock:
+        score_key = 'left_score' if scoring_team is Team.HOME else 'right_score'
+        state[score_key] = str(int(normalize_score_value(state[score_key])) + 1)
+        penalty_game.record_goal(scoring_team)
+        updated_state = current_state_payload()
+    write_overlay_text()
+    socketio.emit('state_updated', updated_state)
     return jsonify(updated_state)
 
 @app.route('/api/stream/metrics', methods=['GET'])

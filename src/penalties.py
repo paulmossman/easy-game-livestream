@@ -178,6 +178,38 @@ class PenaltyStateMachine:
         self._activate_queued(opponent)
         return penalty
 
+    def cancel_penalty(self, penalty_id: int) -> Optional[Penalty]:
+        penalty = next((item for item in self.penalties if item.id == penalty_id), None)
+        if penalty is None or penalty.status not in (PenaltyStatus.ACTIVE, PenaltyStatus.QUEUED):
+            return None
+        penalty.status = PenaltyStatus.CANCELLED
+        penalty.remaining_seconds = 0
+        penalty.segments_remaining = 0
+        self._activate_queued(penalty.team)
+        return penalty
+
+    def set_remaining_seconds(self, penalty_id: int, seconds: float) -> Optional[Penalty]:
+        penalty = next((item for item in self.penalties if item.id == penalty_id), None)
+        if penalty is None or penalty.status not in (PenaltyStatus.ACTIVE, PenaltyStatus.QUEUED):
+            return None
+        if seconds < 0:
+            raise ValueError("penalty time cannot be negative")
+        penalty.remaining_seconds = float(seconds)
+        if penalty.remaining_seconds == 0:
+            penalty.status = PenaltyStatus.SERVED
+            penalty.segments_remaining = 0
+            self._activate_queued(penalty.team)
+        elif penalty.kind is PenaltyType.DOUBLE_MINOR:
+            penalty.segments_remaining = 2 if penalty.remaining_seconds > MINOR_SEGMENT_SECONDS else 1
+        return penalty
+
+    def adjust_remaining_seconds(self, seconds_delta: float) -> None:
+        active_penalties = [p for p in self.penalties if p.status is PenaltyStatus.ACTIVE]
+        for penalty in active_penalties:
+            self.set_remaining_seconds(
+                penalty.id, max(0, penalty.remaining_seconds + seconds_delta)
+            )
+
     def skaters_for(self, team: Team) -> int:
         team = self._team(team)
         advantage_count = self._active_advantage_count(team)

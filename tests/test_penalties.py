@@ -133,6 +133,60 @@ class PenaltyStateMachineTests(unittest.TestCase):
         self.assertIs(penalty.status, PenaltyStatus.SERVED)
         self.assertEqual(game.strength, "5-on-5")
 
+    def test_cancelled_penalty_activates_queued_penalty(self):
+        game = PenaltyStateMachine()
+        active, _, queued = game.assess_penalties([
+            PenaltyAssessment(Team.AWAY, "A1"),
+            PenaltyAssessment(Team.AWAY, "A2"),
+            PenaltyAssessment(Team.AWAY, "A3"),
+        ])
+
+        self.assertIs(game.cancel_penalty(active.id), active)
+
+        self.assertIs(active.status, PenaltyStatus.CANCELLED)
+        self.assertIs(queued.status, PenaltyStatus.ACTIVE)
+        self.assertEqual(game.strength, "5-on-3")
+
+    def test_remaining_time_can_be_edited_and_zero_serves_penalty(self):
+        game = PenaltyStateMachine()
+        penalty = game.assess_penalty(Team.AWAY, "A1", PenaltyType.DOUBLE_MINOR)
+
+        self.assertIs(game.set_remaining_seconds(penalty.id, 45), penalty)
+        self.assertEqual(penalty.remaining_seconds, 45)
+        self.assertEqual(penalty.segments_remaining, 1)
+
+        game.set_remaining_seconds(penalty.id, 0)
+
+        self.assertIs(penalty.status, PenaltyStatus.SERVED)
+        self.assertEqual(game.strength, "5-on-5")
+
+    def test_game_clock_adjustment_changes_active_penalty_time_only(self):
+        game = PenaltyStateMachine()
+        active, _, queued = game.assess_penalties([
+            PenaltyAssessment(Team.AWAY, "A1"),
+            PenaltyAssessment(Team.AWAY, "A2"),
+            PenaltyAssessment(Team.AWAY, "A3"),
+        ])
+
+        game.adjust_remaining_seconds(1)
+
+        self.assertEqual(active.remaining_seconds, 121)
+        self.assertEqual(queued.remaining_seconds, 120)
+
+    def test_clock_adjustment_does_not_adjust_newly_activated_queue(self):
+        game = PenaltyStateMachine()
+        active, _, queued = game.assess_penalties([
+            PenaltyAssessment(Team.AWAY, "A1", duration_seconds=1),
+            PenaltyAssessment(Team.AWAY, "A2", duration_seconds=20),
+            PenaltyAssessment(Team.AWAY, "A3", duration_seconds=30),
+        ])
+
+        game.adjust_remaining_seconds(-1)
+
+        self.assertIs(active.status, PenaltyStatus.SERVED)
+        self.assertIs(queued.status, PenaltyStatus.ACTIVE)
+        self.assertEqual(queued.remaining_seconds, 30)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Iterable, Optional
+from typing import Iterable, Optional, Tuple
 
 
 class Team(str, Enum):
@@ -37,7 +37,6 @@ class PenaltyAssessment:
     player: str
     kind: PenaltyType = PenaltyType.MINOR
     duration_seconds: Optional[float] = None
-    offset_group: Optional[str] = None
 
 
 @dataclass
@@ -49,20 +48,14 @@ class Penalty:
     duration_seconds: float
     remaining_seconds: float
     status: PenaltyStatus
-    offset_group: Optional[str] = None
     segments_remaining: int = 1
-
-    @property
-    def is_offset(self) -> bool:
-        return self.offset_group is not None
 
 
 class PenaltyStateMachine:
     """Tracks penalty clocks and the resulting skater advantage.
 
     Penalty clocks advance only when ``advance`` is called, so the host app
-    controls whether its game clock is running. Offset calls are assessed
-    together with a shared offset group and do not change manpower.
+    controls whether its game clock is running.
     """
 
     MAX_PENALTY_ADVANTAGE = 2
@@ -89,20 +82,6 @@ class PenaltyStateMachine:
     def assess_penalties(
         self, assessments: Iterable[PenaltyAssessment]
     ) -> list[Penalty]:
-        assessments = list(assessments)
-        offset_groups: dict[str, list[PenaltyAssessment]] = {}
-        for assessment in assessments:
-            if assessment.offset_group:
-                offset_groups.setdefault(assessment.offset_group, []).append(assessment)
-
-        for group, members in offset_groups.items():
-            teams = [self._team(member.team) for member in members]
-            durations = [self._duration(member) for member in members]
-            if len(members) != 2 or set(teams) != {Team.HOME, Team.AWAY}:
-                raise ValueError(f"offset group {group!r} must contain one penalty per team")
-            if durations[0] != durations[1]:
-                raise ValueError(f"offset group {group!r} penalties must have equal durations")
-
         assessed = []
         for assessment in assessments:
             team = self._team(assessment.team)
@@ -116,11 +95,10 @@ class PenaltyStateMachine:
                 duration_seconds=duration,
                 remaining_seconds=duration,
                 status=PenaltyStatus.ACTIVE,
-                offset_group=assessment.offset_group,
                 segments_remaining=2 if kind is PenaltyType.DOUBLE_MINOR else 1,
             )
             self._next_id += 1
-            if not penalty.is_offset and self._active_advantage_count(team) >= self.MAX_PENALTY_ADVANTAGE:
+            if self._active_advantage_count(team) >= self.MAX_PENALTY_ADVANTAGE:
                 penalty.status = PenaltyStatus.QUEUED
             self.penalties.append(penalty)
             assessed.append(penalty)
@@ -157,7 +135,6 @@ class PenaltyStateMachine:
             if penalty.team is opponent
             and penalty.kind in (PenaltyType.MINOR, PenaltyType.DOUBLE_MINOR)
             and penalty.status is PenaltyStatus.ACTIVE
-            and not penalty.is_offset
         ]
         if not candidates:
             return None
@@ -250,9 +227,59 @@ class PenaltyStateMachine:
             p.remaining_seconds for p in self.penalties
             if p.team is opponent
             and p.status is PenaltyStatus.ACTIVE
-            and not p.is_offset
         ]
         return int(min(active)) if active else None
+
+    @property
+    def next_manpower_change(self) -> Optional[Tuple[int, int, int]]:
+        """Return the next home/away skater counts and seconds until they change."""
+        home_skaters = self.skaters_for(Team.HOME)
+        away_skaters = self.skaters_for(Team.AWAY)
+        if home_skaters == self.base_skaters and away_skaters == self.base_skaters:
+            return None
+
+        active = [
+            [penalty.team, penalty.remaining_seconds, penalty.id]
+            for penalty in self.penalties
+            if penalty.status is PenaltyStatus.ACTIVE
+        ]
+        queued = {
+            team: sorted(
+                (penalty for penalty in self.penalties
+                 if penalty.team is team and penalty.status is PenaltyStatus.QUEUED),
+                key=lambda penalty: penalty.id,
+            )
+            for team in (Team.HOME, Team.AWAY)
+        }
+        elapsed = 0.0
+
+        while active:
+            step = min(item[1] for item in active)
+            elapsed += step
+            for item in active:
+                item[1] -= step
+            active = [item for item in active if item[1] > 0]
+
+            for team in (Team.HOME, Team.AWAY):
+                team_active = sum(item[0] is team for item in active)
+                while queued[team] and team_active < self.MAX_PENALTY_ADVANTAGE:
+                    penalty = queued[team].pop(0)
+                    active.append([team, penalty.remaining_seconds, penalty.id])
+                    team_active += 1
+
+            next_home_skaters = max(
+                self.MIN_SKATERS,
+                self.base_skaters - sum(item[0] is Team.HOME for item in active),
+            )
+            next_away_skaters = max(
+                self.MIN_SKATERS,
+                self.base_skaters - sum(item[0] is Team.AWAY for item in active),
+            )
+            if (next_home_skaters, next_away_skaters) == (home_skaters, away_skaters):
+                continue
+            return next_home_skaters, next_away_skaters, int(elapsed + 0.999999)
+
+        return None
 
     def active_penalties(self, team: Optional[Team] = None) -> list[Penalty]:
         normalized_team = self._team(team) if team is not None else None
@@ -267,7 +294,6 @@ class PenaltyStateMachine:
             1 for penalty in self.penalties
             if penalty.team is team
             and penalty.status is PenaltyStatus.ACTIVE
-            and not penalty.is_offset
         )
 
     def _activate_queued(self, team: Team) -> None:

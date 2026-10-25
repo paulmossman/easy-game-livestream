@@ -125,8 +125,7 @@
             font-size: 1rem;
         }
 
-        .penalty-add,
-        .penalty-add-both {
+        .penalty-add {
             width: 72px;
             min-height: 40px;
             border: 0;
@@ -594,6 +593,7 @@
         /* These overlays are displayed when "Show video" is de-selected. */
         .overlay-mock {
             position: relative;
+            container-type: inline-size;
             background:
                 radial-gradient(circle at top center, rgba(14, 154, 127, 0.18), transparent 35%),
                 linear-gradient(180deg, #1b262d 0%, #10171c 100%);
@@ -630,7 +630,25 @@
             top: 0;
             left: 50%;
             transform: translateX(-50%);
-            font-size: 1.35rem;
+            box-sizing: border-box;
+            max-width: calc(16% - 8px);
+            padding: 8px 0.75cqw;
+            font-size: clamp(0.8rem, 3.6cqw, 1.8rem);
+            text-overflow: clip;
+        }
+
+        /* `left` is set by positionOverlayPenalties() in app.js, matching the
+           FFmpeg overlay: centred between the team chip and the time chip. */
+        .overlay-chip.penalty {
+            top: 0;
+            transform: translateX(-50%);
+            box-sizing: border-box;
+            width: max-content;
+            max-width: none;
+            padding: 8px 0.75cqw;
+            font-size: clamp(0.7rem, 2.8cqw, 1.4rem);
+            overflow: visible;
+            text-overflow: clip;
         }
 
         .overlay-chip.phase {
@@ -1064,7 +1082,6 @@
                         <div class="penalty-section-heading">
                             <h3>Penalties</h3>
                             <button type="button" class="penalty-add" data-team="home" aria-label="Add left penalty">+</button>
-                            <button type="button" class="penalty-add-both" aria-label="Add penalties for both teams">Both +</button>
                         </div>
                         <div id="left-penalties" class="penalty-list" aria-live="polite"></div>
                     </div>
@@ -1085,7 +1102,6 @@
                         <div class="penalty-section-heading">
                             <h3>Penalties</h3>
                             <button type="button" class="penalty-add" data-team="away" aria-label="Add right penalty">+</button>
-                            <button type="button" class="penalty-add-both" aria-label="Add penalties for both teams">Both +</button>
                         </div>
                         <div id="right-penalties" class="penalty-list" aria-live="polite"></div>
                     </div>
@@ -1114,6 +1130,8 @@
                         <div id="overlay-left-text" class="overlay-chip left">Left: 0</div>
                         <div id="overlay-right-text" class="overlay-chip right">Right: 0</div>
                         <div id="overlay-time-text" class="overlay-chip time">20:00</div>
+                        <div id="overlay-left-penalty" class="overlay-chip penalty left-penalty is-hidden"></div>
+                        <div id="overlay-right-penalty" class="overlay-chip penalty right-penalty is-hidden"></div>
                         <div id="overlay-phase-text" class="overlay-chip phase">{{ initial_phase }}</div>
                         <div id="overlay-mute-icon" class="overlay-mute is-hidden">MUTED</div>
                     </div>

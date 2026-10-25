@@ -666,15 +666,12 @@ function meterWidthFromDb(audioDb) {
     return ((clamped + 80) / 70) * 100;
 }
 
-function teamDisplay(teamName, score, ppEnabled, enEnabled, isRightSide) {
+function teamDisplay(teamName, score, ppEnabled, isRightSide) {
     const safeTeamName = teamName || (isRightSide ? 'Right' : 'Left');
     const safeScore = score || '0';
     const flags = [];
     if (ppEnabled) {
         flags.push('PP');
-    }
-    if (enEnabled) {
-        flags.push('EN');
     }
 
     if (isRightSide) {
@@ -691,29 +688,65 @@ function teamHeadingDisplay(teamName, fallbackName) {
 
 function renderOverlayMock(state) {
     const isClockIrrelevant = !state.phase_has_duration;
-    const timeText = isClockIrrelevant ? state.phase : state.time;
+    const timeText = isClockIrrelevant ? state.phase : formatOverlayClock(state.time);
     const phaseText = isClockIrrelevant ? '' : state.phase;
+    const penaltyText = state.penalty_overlay_text || {};
     const timeElement = document.getElementById('overlay-time-text');
     const phaseElement = document.getElementById('overlay-phase-text');
     document.getElementById('overlay-left-text').textContent = teamDisplay(
         state.left_team,
         state.left_score,
         state.left_pp,
-        state.left_en,
         false
     );
     document.getElementById('overlay-right-text').textContent = teamDisplay(
         state.right_team,
         state.right_score,
         state.right_pp,
-        state.right_en,
         true
     );
     timeElement.textContent = timeText;
     timeElement.classList.toggle('is-hidden', !timeText);
     phaseElement.textContent = phaseText;
     phaseElement.classList.toggle('is-hidden', !phaseText);
+    const leftPenaltyElement = document.getElementById('overlay-left-penalty');
+    const rightPenaltyElement = document.getElementById('overlay-right-penalty');
+    // Text comes from the server (current_penalty_overlay_text) so the
+    // preview matches the FFmpeg overlay.
+    leftPenaltyElement.textContent = penaltyText.left || '';
+    rightPenaltyElement.textContent = penaltyText.right || '';
+    leftPenaltyElement.classList.toggle('is-hidden', !penaltyText.left);
+    rightPenaltyElement.classList.toggle('is-hidden', !penaltyText.right);
     document.getElementById('overlay-mute-icon').classList.toggle('is-hidden', !state.mute);
+    positionOverlayPenalties();
+}
+
+function positionOverlayPenalties() {
+    const mock = document.getElementById('overlay-mock');
+    const mockRect = mock.getBoundingClientRect();
+    if (mockRect.width === 0) {
+        return;
+    }
+    // The preview can be scaled by an ancestor. Measurements are in screen
+    // pixels, but `left` is applied in the mock's own unscaled pixels.
+    const scale = mockRect.width / mock.offsetWidth;
+    const timeElement = document.getElementById('overlay-time-text');
+    const centre = mockRect.left + mockRect.width / 2;
+    const timeRect = timeElement.classList.contains('is-hidden')
+        ? { left: centre, right: centre }
+        : timeElement.getBoundingClientRect();
+    const leftTeamRect = document.getElementById('overlay-left-text').getBoundingClientRect();
+    const rightTeamRect = document.getElementById('overlay-right-text').getBoundingClientRect();
+    document.getElementById('overlay-left-penalty').style.left =
+        `${((leftTeamRect.right + timeRect.left) / 2 - mockRect.left) / scale}px`;
+    document.getElementById('overlay-right-penalty').style.left =
+        `${((timeRect.right + rightTeamRect.left) / 2 - mockRect.left) / scale}px`;
+}
+
+function formatOverlayClock(value) {
+    const normalized = normalizeClockValue(value);
+    const match = /^(\d+):(\d{2})$/.exec(normalized);
+    return match ? `${match[1].padStart(2, '0')}:${match[2]}` : normalized;
 }
 
 function currentFormData() {
@@ -915,7 +948,7 @@ function penaltiesByExpiration(penalties) {
     let elapsed = 0;
 
     while (active.length > 0 || queued.length > 0) {
-        while (queued.length > 0 && active.filter((item) => !item.penalty.offset).length < 2) {
+        while (queued.length > 0 && active.length < 2) {
             const penalty = queued.shift();
             active.push({ penalty, remaining: Number(penalty.remaining_seconds) });
         }
@@ -1029,18 +1062,10 @@ function handlePenaltyTimeKeydown(event) {
 }
 
 async function addPenalty(team) {
-    await postPenaltyAddition({ team });
-}
-
-async function addOffsettingPenalties(teams) {
-    await postPenaltyAddition({ teams });
-}
-
-async function postPenaltyAddition(payload) {
     const response = await fetch('/api/penalties', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify({ team })
     });
     if (!response.ok) {
         const result = await response.json();
@@ -1217,6 +1242,12 @@ function handleTabFocus(event) {
 }
 
 document.getElementById('overlay-form').addEventListener('submit', submitOverlayUpdate);
+// Re-measure when the preview or any chip it depends on changes size,
+// including when web fonts finish loading.
+const overlayPenaltyObserver = new ResizeObserver(positionOverlayPenalties);
+['overlay-mock', 'overlay-left-text', 'overlay-right-text', 'overlay-time-text'].forEach((id) => {
+    overlayPenaltyObserver.observe(document.getElementById(id));
+});
 document.getElementById('start-stop-button').addEventListener('click', togglePrimaryAction);
 document.getElementById('clock-toggle-button').addEventListener('click', toggleClockRunning);
 document.getElementById('left-plus').addEventListener('click', () => incrementScore('left-score'));
@@ -1258,9 +1289,6 @@ document.getElementById('left-team').addEventListener('input', refreshTeamHeadin
 document.getElementById('right-team').addEventListener('input', refreshTeamHeadingsFromInputs);
 document.querySelectorAll('.penalty-add').forEach((button) => {
     button.addEventListener('click', () => addPenalty(button.dataset.team));
-});
-document.querySelectorAll('.penalty-add-both').forEach((button) => {
-    button.addEventListener('click', () => addOffsettingPenalties(['home', 'away']));
 });
 document.getElementById('show-video').addEventListener('change', (event) => setPreviewVisibility(event.target.checked));
 document.getElementById('preview-advanced-button').addEventListener('click', () => {

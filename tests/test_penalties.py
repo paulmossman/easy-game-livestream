@@ -18,16 +18,22 @@ class PenaltyStateMachineTests(unittest.TestCase):
         self.assertEqual(game.strength, "4-on-4")
         self.assertIsNone(game.power_play_team)
 
-    def test_offsetting_penalties_do_not_change_manpower(self):
+    def test_next_manpower_change_reports_first_uneven_strength(self):
+        game = PenaltyStateMachine()
+        game.assess_penalty(Team.HOME, "H1", duration_seconds=30)
+        game.assess_penalty(Team.AWAY, "A1", duration_seconds=60)
+
+        self.assertEqual(game.next_manpower_change, (5, 4, 30))
+
+    def test_next_manpower_change_skips_queued_replacement(self):
         game = PenaltyStateMachine()
         game.assess_penalties([
-            PenaltyAssessment(Team.HOME, "H1", offset_group="fight-1"),
-            PenaltyAssessment(Team.AWAY, "A1", offset_group="fight-1"),
+            PenaltyAssessment(Team.AWAY, "A1", duration_seconds=10),
+            PenaltyAssessment(Team.AWAY, "A2", duration_seconds=20),
+            PenaltyAssessment(Team.AWAY, "A3", duration_seconds=30),
         ])
 
-        self.assertEqual(game.strength, "5-on-5")
-        game.advance(30)
-        self.assertEqual(game.strength, "5-on-5")
+        self.assertEqual(game.next_manpower_change, (5, 4, 20))
 
     def test_queued_penalty_starts_and_ticks_after_first_expires(self):
         game = PenaltyStateMachine()

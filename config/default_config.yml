@@ -8,6 +8,8 @@ team_names:
 
 toggle_buffer_ms: 400
 
+start_show_video: true
+
 phases:
   - name: Warmup
     duration: '0:02'

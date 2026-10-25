@@ -1120,7 +1120,7 @@
                 </div>
                 <div class="preview-options">
                     <label class="option-row preview-toggle-row">
-                        <input type="checkbox" id="show-video" checked>
+                        <input type="checkbox" id="show-video" {% if start_show_video %}checked{% endif %}>
                         <span>Show video</span>
                     </label>
                     <button type="button" id="preview-advanced-button" class="advanced-button">Advanced ⚙️</button>

@@ -1251,10 +1251,12 @@ def apply_overlay_update(data):
 @app.route('/')
 def index():
     toggle_buffer_ms = config.get('toggle_buffer_ms', 400)
+    start_show_video = config.get('start_show_video', True)
     return render_template(
         'index.html',
         webrtc_additional_hosts=os.getenv('MTX_WEBRTCADDITIONALHOSTS', ''),
         toggle_buffer_ms=toggle_buffer_ms,
+        start_show_video=start_show_video,
         phases=phase_configurations,
         initial_phase=initial_phase_name,
     )

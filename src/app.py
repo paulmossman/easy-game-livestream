@@ -23,7 +23,8 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
 # Load config
-config_path = '/app/config/config.yml'
+config_filename = os.getenv('APP_CONFIG_FILE') or 'config.yml'
+config_path = os.path.join('/app/config', config_filename)
 default_config_path = '/app/config/default_config.yml'
 load_config_path = config_path if os.path.exists(config_path) else default_config_path
 if os.path.exists(load_config_path):
@@ -1323,7 +1324,7 @@ def youtube_oauth_start():
     client_config = google_client_config()
     if client_config is None:
         return jsonify({
-            'error': 'Missing Google OAuth client configuration. Add google_oauth_client_secret.json to config/ or set google_oauth_client_id/google_oauth_client_secret in config.yml.'
+            'error': f'Missing Google OAuth client configuration. Add google_oauth_client_secret.json to config/ or set google_oauth_client_id/google_oauth_client_secret in {config_filename}.'
         }), 400
 
     flow = Flow.from_client_config(client_config, scopes=google_oauth_scopes)

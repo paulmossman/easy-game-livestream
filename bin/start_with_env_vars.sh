@@ -2,41 +2,15 @@
 
 set -euo pipefail
 
-lan_ips_csv=""
-
 if command -v ip >/dev/null 2>&1; then
   lan_ips_csv="$(
     ip -o -4 addr show up 2>/dev/null \
     | awk '{split($4, a, "/"); if (a[1] != "" && a[1] != "127.0.0.1") print a[1]}' \
     | paste -sd, -
   )"
-elif command -v ifconfig >/dev/null 2>&1; then
-   lan_ips_csv="$(
-      ifconfig \
-      | awk '
-            /^[^ \t]/ {
-            if (iface != "" && active && ip != "" && ip != "127.0.0.1") {
-               print ip
-            }
-            iface = $1
-            sub(/:$/, "", iface)
-            active = 0
-            ip = ""
-            }
-            /inet / && $2 != "127.0.0.1" {
-            ip = $2
-            }
-            /status: active/ {
-            active = 1
-            }
-            END {
-            if (iface != "" && active && ip != "" && ip != "127.0.0.1") {
-               print ip
-            }
-            }
-         ' \
-      | paste -sd, -
-   )"
+else
+  echo "Error: 'ip' not found." >&2
+  exit 1
 fi
 
 export MTX_WEBRTCADDITIONALHOSTS="${lan_ips_csv}"

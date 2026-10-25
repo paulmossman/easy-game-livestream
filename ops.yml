@@ -1,6 +1,6 @@
 dependencies:
   brew:
-    - iproute2mac
+    - iproute2mac # iproute/iproute2 on Linux.
 
 actions:
   start:

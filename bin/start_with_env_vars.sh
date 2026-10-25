@@ -2,6 +2,10 @@
 
 set -euo pipefail
 
+if [[ -n ${1:-} ]]; then
+    export APP_CONFIG_FILE="$1"
+fi
+
 if command -v ip >/dev/null 2>&1; then
   lan_ips_csv="$(
     ip -o -4 addr show up 2>/dev/null \

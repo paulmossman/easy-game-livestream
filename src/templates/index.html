@@ -360,9 +360,14 @@
             --toggle-secondary-width: 124px;
             --toggle-time-width: clamp(190px, 29vw, 270px);
             display: grid;
-            grid-template-columns: var(--toggle-time-width) minmax(0, 1fr) var(--toggle-secondary-width);
+            grid-template-columns: var(--toggle-time-width) minmax(0, 1fr) var(--toggle-time-width);
             align-items: center;
             gap: 12px;
+        }
+
+        /* While muted, a muted button sits on each side of the start/stop button. */
+        .toggle-actions.is-muted {
+            grid-template-columns: var(--toggle-time-width) var(--toggle-secondary-width) minmax(0, 1fr) var(--toggle-secondary-width) var(--toggle-time-width);
         }
 
         .toggle-secondary-button {
@@ -378,12 +383,12 @@
             font-weight: 900;
         }
 
-        #game-time-button {
+        .game-time-button {
             width: var(--toggle-time-width);
             font-size: clamp(2.8rem, 9vw, 5.5rem);
         }
 
-        #announcement-button {
+        .muted-button {
             font-size: 5rem;
         }
 
@@ -930,8 +935,12 @@
                 --toggle-control-height: 108px;
                 --toggle-secondary-width: 116px;
                 --toggle-time-width: clamp(190px, 29vw, 270px);
-                grid-template-columns: var(--toggle-time-width) minmax(0, 1fr) var(--toggle-secondary-width);
+                grid-template-columns: var(--toggle-time-width) minmax(0, 1fr) var(--toggle-time-width);
                 gap: 8px;
+            }
+
+            .toggle-actions.is-muted {
+                grid-template-columns: var(--toggle-time-width) var(--toggle-secondary-width) minmax(0, 1fr) var(--toggle-secondary-width) var(--toggle-time-width);
             }
 
             .toggle-secondary-button {
@@ -940,12 +949,12 @@
                 font-size: 2rem;
             }
 
-            #game-time-button {
+            .game-time-button {
                 width: var(--toggle-time-width);
                 font-size: clamp(2.8rem, 9vw, 5.5rem);
             }
 
-            #announcement-button {
+            .muted-button {
                 padding: 0;
                 font-size: 4rem;
             }
@@ -991,10 +1000,12 @@
     <div class="layout">
         <form id="overlay-form" class="board">
             <section class="panel toggle-panel">
-                <div class="toggle-actions">
-                    <button id="game-time-button" class="toggle-secondary-button" type="button" aria-label="Game time">--:--</button>
+                <div id="toggle-actions" class="toggle-actions">
+                    <button class="toggle-secondary-button game-time-button" type="button" aria-label="Game time">--:--</button>
+                    <button class="toggle-secondary-button muted-button is-hidden" type="button" aria-label="Outgoing audio muted" title="Outgoing audio muted">🔇</button>
                     <button id="start-stop-button" class="toggle-button stopped" type="button">Start</button>
-                    <button id="announcement-button" class="toggle-secondary-button" type="button" aria-label="Outgoing audio active" title="Outgoing audio active">📣</button>
+                    <button class="toggle-secondary-button muted-button is-hidden" type="button" aria-label="Outgoing audio muted" title="Outgoing audio muted">🔇</button>
+                    <button class="toggle-secondary-button game-time-button" type="button" aria-label="Game time">--:--</button>
                 </div>
             </section>
 

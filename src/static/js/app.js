@@ -792,13 +792,15 @@ function renderState(state) {
     const clockRunning = Boolean(state.clock_running);
     const isMuted = Boolean(state.mute);
     const isUntimedPhase = !state.phase_has_duration;
-    const announcementButton = document.getElementById('announcement-button');
 
     muteOnStop.checked = Boolean(state.mute_on_stop);
-    document.getElementById('game-time-button').textContent = state.time || '--:--';
-    announcementButton.textContent = isMuted ? '🔇' : '📣';
-    announcementButton.setAttribute('aria-label', isMuted ? 'Outgoing audio muted' : 'Outgoing audio active');
-    announcementButton.title = announcementButton.getAttribute('aria-label');
+    document.querySelectorAll('.game-time-button').forEach((button) => {
+        button.textContent = state.time || '--:--';
+    });
+    document.getElementById('toggle-actions').classList.toggle('is-muted', isMuted);
+    document.querySelectorAll('.muted-button').forEach((button) => {
+        button.classList.toggle('is-hidden', !isMuted);
+    });
     clockToggleButton.textContent = clockRunning ? 'Stop' : 'Start';
     clockToggleButton.classList.toggle('stopped', !clockRunning);
     clockToggleButton.classList.toggle('is-hidden', clockMode !== 'run_time');

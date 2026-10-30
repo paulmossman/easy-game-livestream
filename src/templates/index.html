@@ -86,8 +86,100 @@
 
         .team-flags {
             display: grid;
-            grid-template-columns: minmax(0, 2fr) minmax(72px, 1fr);
+            grid-template-columns: minmax(0, 1fr);
+        }
+
+        .team-heading-wrap {
+            display: flex;
+            min-width: 0;
+            align-items: center;
+            justify-content: flex-start;
+            gap: 8px;
+        }
+
+        .en-toggle {
+            display: grid;
+            justify-items: center;
+            gap: 2px;
+            line-height: 1;
+        }
+
+        .en-toggle input {
+            margin: 0;
+        }
+
+        .penalty-controls {
+            display: grid;
+            gap: 10px;
+        }
+
+        .penalty-section-heading {
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
             gap: 12px;
+        }
+
+        .penalty-section-heading h3 {
+            margin: 0;
+            font-size: 1rem;
+        }
+
+        .penalty-add {
+            width: 72px;
+            min-height: 40px;
+            border: 0;
+            border-radius: 12px;
+            color: white;
+            background: var(--green-b);
+            font-size: 1rem;
+            font-weight: 800;
+            cursor: pointer;
+        }
+
+        .penalty-list {
+            display: grid;
+            gap: 6px;
+        }
+
+        .penalty-row {
+            display: grid;
+            grid-template-columns: 64px minmax(0, 1fr) auto auto;
+            gap: 6px;
+            align-items: center;
+            padding: 6px;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            font-size: 0.9rem;
+        }
+
+        .penalty-kind-controls {
+            display: flex;
+            gap: 3px;
+            flex-wrap: wrap;
+        }
+
+        .penalty-kind-button {
+            min-height: 28px;
+            padding: 3px 6px;
+            border: 1px solid var(--line);
+            border-radius: 6px;
+            color: var(--ink);
+            background: rgba(255, 255, 255, 0.72);
+            font-size: 1rem;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .penalty-kind-button[aria-pressed="true"] {
+            border-color: var(--green-b);
+            color: white;
+            background: var(--green-b);
+        }
+
+        .penalty-remove {
+            min-width: 30px;
+            min-height: 30px;
         }
 
         .pp-controls {
@@ -296,17 +388,16 @@
         }
 
         .team-heading {
+            flex: 1;
+            min-width: 0;
             margin: 0;
             font-size: clamp(1.6rem, 3vw, 2.4rem);
             font-weight: 900;
+            text-align: right;
             letter-spacing: 0.01em;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
-        }
-
-        .team-heading.right {
-            text-align: right;
         }
 
         label {
@@ -502,6 +593,7 @@
         /* These overlays are displayed when "Show video" is de-selected. */
         .overlay-mock {
             position: relative;
+            container-type: inline-size;
             background:
                 radial-gradient(circle at top center, rgba(14, 154, 127, 0.18), transparent 35%),
                 linear-gradient(180deg, #1b262d 0%, #10171c 100%);
@@ -538,7 +630,25 @@
             top: 0;
             left: 50%;
             transform: translateX(-50%);
-            font-size: 1.35rem;
+            box-sizing: border-box;
+            max-width: calc(16% - 8px);
+            padding: 8px 0.75cqw;
+            font-size: clamp(0.8rem, 3.6cqw, 1.8rem);
+            text-overflow: clip;
+        }
+
+        /* `left` is set by positionOverlayPenalties() in app.js, matching the
+           FFmpeg overlay: centred between the team chip and the time chip. */
+        .overlay-chip.penalty {
+            top: 0;
+            transform: translateX(-50%);
+            box-sizing: border-box;
+            width: max-content;
+            max-width: none;
+            padding: 8px 0.75cqw;
+            font-size: clamp(0.7rem, 2.8cqw, 1.4rem);
+            overflow: visible;
+            text-overflow: clip;
         }
 
         .overlay-chip.phase {
@@ -960,43 +1070,41 @@
 
             <section class="panel team-panel left">
                 <div class="team-top-row">
-                    <h2 id="left-team-heading" class="team-heading">Left</h2>
+                    <div class="team-heading-wrap">
+                        <label class="en-toggle" for="left-en"><span>EN</span><input type="checkbox" id="left-en"></label>
+                        <h2 id="left-team-heading" class="team-heading">Left</h2>
+                    </div>
                     <input type="text" id="left-score" class="score-input" value="0" inputmode="numeric">
                     <button type="button" id="left-plus" class="plus-button" aria-label="Increase left score">+</button>
                 </div>
                 <div class="team-flags">
-                    <div class="option-row team-option pp-controls">
-                        <label class="pp-toggle" for="left-pp">
-                            <input type="checkbox" id="left-pp">
-                            <span>PP</span>
-                        </label>
-                        <input type="text" id="left-pp-time" class="pp-time-input" inputmode="numeric" placeholder="M:SS" aria-label="Left PP time">
+                    <div class="penalty-controls">
+                        <div class="penalty-section-heading">
+                            <h3>Penalties</h3>
+                            <button type="button" class="penalty-add" data-team="home" aria-label="Add left penalty">+</button>
+                        </div>
+                        <div id="left-penalties" class="penalty-list" aria-live="polite"></div>
                     </div>
-                    <label class="option-row team-option">
-                        <input type="checkbox" id="left-en">
-                        <span>EN</span>
-                    </label>
                 </div>
             </section>
 
             <section class="panel team-panel right">
                 <div class="team-top-row">
-                    <h2 id="right-team-heading" class="team-heading right">Right</h2>
+                    <div class="team-heading-wrap">
+                        <label class="en-toggle" for="right-en"><span>EN</span><input type="checkbox" id="right-en"></label>
+                        <h2 id="right-team-heading" class="team-heading right">Right</h2>
+                    </div>
                     <input type="text" id="right-score" class="score-input" value="0" inputmode="numeric">
                     <button type="button" id="right-plus" class="plus-button" aria-label="Increase right score">+</button>
                 </div>
                 <div class="team-flags">
-                    <div class="option-row team-option pp-controls">
-                        <label class="pp-toggle" for="right-pp">
-                            <input type="checkbox" id="right-pp">
-                            <span>PP</span>
-                        </label>
-                        <input type="text" id="right-pp-time" class="pp-time-input" inputmode="numeric" placeholder="M:SS" aria-label="Right PP time">
+                    <div class="penalty-controls">
+                        <div class="penalty-section-heading">
+                            <h3>Penalties</h3>
+                            <button type="button" class="penalty-add" data-team="away" aria-label="Add right penalty">+</button>
+                        </div>
+                        <div id="right-penalties" class="penalty-list" aria-live="polite"></div>
                     </div>
-                    <label class="option-row team-option">
-                        <input type="checkbox" id="right-en">
-                        <span>EN</span>
-                    </label>
                 </div>
             </section>
 
@@ -1022,6 +1130,8 @@
                         <div id="overlay-left-text" class="overlay-chip left">Left: 0</div>
                         <div id="overlay-right-text" class="overlay-chip right">Right: 0</div>
                         <div id="overlay-time-text" class="overlay-chip time">20:00</div>
+                        <div id="overlay-left-penalty" class="overlay-chip penalty left-penalty is-hidden"></div>
+                        <div id="overlay-right-penalty" class="overlay-chip penalty right-penalty is-hidden"></div>
                         <div id="overlay-phase-text" class="overlay-chip phase">{{ initial_phase }}</div>
                         <div id="overlay-mute-icon" class="overlay-mute is-hidden">MUTED</div>
                     </div>

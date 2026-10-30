@@ -14,6 +14,7 @@ import urllib.parse
 import urllib.request
 from urllib.parse import parse_qs
 import yaml
+from PIL import ImageFont
 from flask import Flask, render_template, request, jsonify, redirect, session, url_for
 from flask_socketio import SocketIO, emit
 from google.oauth2.credentials import Credentials
@@ -21,6 +22,7 @@ from google.auth.transport.requests import Request as GoogleAuthRequest
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+from penalties import PenaltyStateMachine, PenaltyType, Team
 
 # Load config
 config_filename = os.getenv('APP_CONFIG_FILE') or 'config.yml'
@@ -105,6 +107,7 @@ state = {
     'incoming_audio_active': False,
     'incoming_stream_ready': False,
 }
+penalty_game = PenaltyStateMachine()
 ffmpeg_process = None
 relay_ffmpeg_process = None
 relay_metrics_session_id = None
@@ -157,7 +160,17 @@ overlay_right_text_path = '/tmp/overlay-right.txt'
 overlay_phase_text_path = '/tmp/overlay-phase.txt'
 overlay_time_text_path = '/tmp/overlay-time.txt'
 overlay_mute_text_path = '/tmp/overlay-mute.txt'
+overlay_left_penalty_text_path = '/tmp/overlay-left-penalty.txt'
+overlay_right_penalty_text_path = '/tmp/overlay-right-penalty.txt'
 last_overlay_signature = None
+overlay_margin = 18
+overlay_box_border = 18
+overlay_team_font_size = 38
+overlay_time_font_size = 44
+overlay_penalty_filters = {'left': 'drawtext@left_penalty', 'right': 'drawtext@right_penalty'}
+sent_penalty_x_expressions = {}
+overlay_fonts = {}
+ffmpeg_stdin_lock = threading.Lock()
 
 def ensure_app_data_dir():
     os.makedirs(app_data_dir, exist_ok=True)
@@ -325,26 +338,85 @@ def watch_relay_progress(process, session_id):
             progress = {}
 
 def current_overlay_text():
-    left_flags = ' '.join(flag for flag, enabled in [('PP', state['left_pp']), ('EN', state['left_en'])] if enabled)
-    right_flags = ' '.join(flag for flag, enabled in [('PP', state['right_pp']), ('EN', state['right_en'])] if enabled)
     left_team = state['left_team'] or 'Left'
     right_team = state['right_team'] or 'Right'
-    left_display = f"{left_team}: {state['left_score']}" + (f" {left_flags}" if left_flags else '')
-    right_display = ((f"{right_flags} " if right_flags else '') + f"{right_team}: {state['right_score']}")
+    left_display = f"{left_team}: {state['left_score']}" + (" PP" if state['left_pp'] else '')
+    right_display = ("PP " if state['right_pp'] else '') + f"{right_team}: {state['right_score']}"
+    penalty_text = current_penalty_overlay_text()
     phase_text = state['phase']
     time_text = state['time']
 
     if not phase_has_duration(state['phase']):
         time_text = phase_text
         phase_text = ''
+    else:
+        time_text = format_overlay_clock(time_text)
 
     return {
         'left': left_display,
         'right': right_display,
+        'left_penalty': penalty_text['left'],
+        'right_penalty': penalty_text['right'],
         'phase': phase_text,
         'time': time_text,
         'mute': 'MUTED' if state['mute'] else '',
     }
+
+def format_overlay_clock(value):
+    total_seconds = parse_clock(value)
+    if total_seconds is None:
+        return value
+    minutes, seconds = divmod(total_seconds, 60)
+    return f"{minutes:02d}:{seconds:02d}"
+
+def current_penalty_overlay():
+    if penalty_game.strength == f"{penalty_game.base_skaters}-on-{penalty_game.base_skaters}":
+        return {'side': None, 'label': '', 'time': ''}
+    next_change = penalty_game.next_manpower_change
+    if next_change is None:
+        return {'side': None, 'label': '', 'time': ''}
+    home_skaters = penalty_game.skaters_for(Team.HOME)
+    away_skaters = penalty_game.skaters_for(Team.AWAY)
+    if max(home_skaters, away_skaters) == penalty_game.base_skaters:
+        advantage = abs(home_skaters - away_skaters)
+        label = 'PP' if advantage == 1 else f'{advantage}+PP'
+    else:
+        label = penalty_game.strength
+    next_home, next_away, remaining_seconds = next_change
+    if home_skaters != away_skaters:
+        display_team = Team.HOME if home_skaters > away_skaters else Team.AWAY
+    elif state['left_en'] != state['right_en']:
+        # EN goes on the pulled-goalie team's side, so show the even
+        # strength on the other side.
+        display_team = Team.AWAY if state['left_en'] else Team.HOME
+    elif next_home != next_away:
+        display_team = Team.HOME if next_home < next_away else Team.AWAY
+    else:
+        display_team = Team.HOME
+    return {
+        'side': 'left' if display_team is Team.HOME else 'right',
+        'label': label,
+        'time': format_clock(remaining_seconds),
+    }
+
+def current_penalty_overlay_text():
+    # Each side's penalty box combines the manpower state and EN. EN sits
+    # toward the centre: "2:00 PP - EN" on the left, "EN - PP 2:00" on the right.
+    penalty_overlay = current_penalty_overlay()
+    texts = {}
+    for side in ('left', 'right'):
+        parts = []
+        if penalty_overlay['side'] == side:
+            if side == 'left':
+                parts.append(f"{penalty_overlay['time']} {penalty_overlay['label']}")
+            else:
+                parts.append(f"{penalty_overlay['label']} {penalty_overlay['time']}")
+        if state[f'{side}_en']:
+            parts.append('EN')
+        if side == 'right':
+            parts.reverse()
+        texts[side] = ' - '.join(parts)
+    return texts
 
 def write_text_file(path, text):
     directory = os.path.dirname(path) or '.'
@@ -359,21 +431,53 @@ def overlay_signature(overlay_text):
     return (
         overlay_text['left'],
         overlay_text['right'],
+        overlay_text['left_penalty'],
+        overlay_text['right_penalty'],
         overlay_text['phase'],
         overlay_text['time'],
         overlay_text['mute'],
     )
 
+def overlay_text_width(text, font_size):
+    if font_size not in overlay_fonts:
+        overlay_fonts[font_size] = ImageFont.truetype(primary_font_path, font_size)
+    return overlay_fonts[font_size].getlength(text)
+
+def penalty_x_expressions(overlay_text):
+    # Centre each penalty box in the gap between its team's box and the
+    # centred time box. drawtext boxes extend the same border on every side,
+    # so the borders cancel out of the midpoint. `tw` is the penalty text's
+    # own width, which FFmpeg evaluates per frame.
+    left_width = round(overlay_text_width(overlay_text['left'], overlay_team_font_size))
+    right_width = round(overlay_text_width(overlay_text['right'], overlay_team_font_size))
+    time_width = round(overlay_text_width(overlay_text['time'], overlay_time_font_size))
+    return {
+        'left': f"({overlay_margin + left_width}+(w-{time_width})/2)/2-tw/2",
+        'right': f"(w-{overlay_margin + right_width}+(w+{time_width})/2)/2-tw/2",
+    }
+
+def sync_penalty_overlay_positions(overlay_text):
+    if not is_ffmpeg_running() or not ffmpeg_ready:
+        return
+    for side, expression in penalty_x_expressions(overlay_text).items():
+        if sent_penalty_x_expressions.get(side) == expression:
+            continue
+        if send_ffmpeg_stdin_command(f'{overlay_penalty_filters[side]} -1 x {expression}'):
+            sent_penalty_x_expressions[side] = expression
+
 def write_overlay_text(force=False):
     global last_overlay_signature
     overlay_text = current_overlay_text()
     current_signature = overlay_signature(overlay_text)
+    sync_penalty_overlay_positions(overlay_text)
 
     if not force and current_signature == last_overlay_signature:
         return False
 
     write_text_file(overlay_left_text_path, overlay_text['left'])
     write_text_file(overlay_right_text_path, overlay_text['right'])
+    write_text_file(overlay_left_penalty_text_path, overlay_text['left_penalty'])
+    write_text_file(overlay_right_penalty_text_path, overlay_text['right_penalty'])
     write_text_file(overlay_phase_text_path, overlay_text['phase'])
     write_text_file(overlay_time_text_path, overlay_text['time'])
     write_text_file(overlay_mute_text_path, overlay_text['mute'])
@@ -383,6 +487,23 @@ def write_overlay_text(force=False):
 
 def current_state_payload():
     payload = dict(state)
+    payload['left_pp'] = state['left_pp']
+    payload['right_pp'] = state['right_pp']
+    payload['manpower'] = penalty_game.strength
+    payload['penalty_overlay'] = current_penalty_overlay()
+    payload['penalty_overlay_text'] = current_penalty_overlay_text()
+    payload['penalties'] = [
+        {
+            'id': penalty.id,
+            'team': penalty.team.value,
+            'player': penalty.player,
+            'kind': penalty.kind.value,
+            'remaining_seconds': penalty.remaining_seconds,
+            'status': penalty.status.value,
+            'segments_remaining': penalty.segments_remaining,
+        }
+        for penalty in penalty_game.active_penalties()
+    ]
     payload['phase_has_duration'] = phase_has_duration(state['phase'])
     return payload
 
@@ -449,11 +570,12 @@ def send_ffmpeg_stdin_command(command):
     try:
         # FFmpeg expects `c` as a single interactive keystroke, then the
         # command line separately after it prints the prompt.
-        ffmpeg_process.stdin.write('c')
-        ffmpeg_process.stdin.flush()
-        time.sleep(0.05)
-        ffmpeg_process.stdin.write(f'{command}\n')
-        ffmpeg_process.stdin.flush()
+        with ffmpeg_stdin_lock:
+            ffmpeg_process.stdin.write('c')
+            ffmpeg_process.stdin.flush()
+            time.sleep(0.05)
+            ffmpeg_process.stdin.write(f'{command}\n')
+            ffmpeg_process.stdin.flush()
         print(f"Sent FFmpeg stdin command: {command}", flush=True)
         return True
     except (BrokenPipeError, OSError) as e:
@@ -502,6 +624,7 @@ def tick_game_clock():
             else:
                 state['time'] = format_clock(remaining_seconds - 1)
                 adjust_pp_times(-1)
+                penalty_game.advance(1)
                 if parse_clock(state['time']) == 0:
                     state['clock_running'] = False
                     next_phase = next_phase_name() if phase_has_duration(state['phase']) else None
@@ -1057,12 +1180,16 @@ def run_ffmpeg():
         stop_ffmpeg()
         ffmpeg_ready = False
         write_overlay_text(force=True)
+        sent_penalty_x_expressions.clear()
+        sent_penalty_x_expressions.update(penalty_x_expressions(current_overlay_text()))
         filter_complex = ';'.join([
-            f"[0:v]drawtext=fontfile={primary_font_path}:textfile={overlay_left_text_path}:reload=1:fontcolor=white:fontsize=38:box=1:boxcolor=black@0.69:boxborderw=18:x=18:y=18[v_left]",
-            f"[v_left]drawtext=fontfile={primary_font_path}:textfile={overlay_right_text_path}:reload=1:fontcolor=white:fontsize=38:box=1:boxcolor=black@0.69:boxborderw=18:x=w-tw-18:y=18[v_right]",
-            f"[v_right]drawtext=fontfile={primary_font_path}:textfile={overlay_time_text_path}:reload=1:fontcolor=white:fontsize=44:box=1:boxcolor=black@0.69:boxborderw=18:x=(w-tw)/2:y=18[v_time]",
+            f"[0:v]drawtext=fontfile={primary_font_path}:textfile={overlay_left_text_path}:reload=1:fontcolor=white:fontsize={overlay_team_font_size}:box=1:boxcolor=black@0.69:boxborderw={overlay_box_border}:x={overlay_margin}:y=18[v_left]",
+            f"[v_left]drawtext=fontfile={primary_font_path}:textfile={overlay_right_text_path}:reload=1:fontcolor=white:fontsize={overlay_team_font_size}:box=1:boxcolor=black@0.69:boxborderw={overlay_box_border}:x=w-tw-{overlay_margin}:y=18[v_right]",
+            f"[v_right]drawtext=fontfile={primary_font_path}:textfile={overlay_time_text_path}:reload=1:fontcolor=white:fontsize={overlay_time_font_size}:box=1:boxcolor=black@0.69:boxborderw={overlay_box_border}:x=(w-tw)/2:y=18[v_time]",
             f"[v_time]drawtext=fontfile={primary_font_path}:textfile={overlay_phase_text_path}:reload=1:fontcolor=white:fontsize=32:box=1:boxcolor=black@0.69:boxborderw=18:x=18:y=h-th-18[v_phase]",
-            f"[v_phase]drawtext=fontfile={primary_font_path}:textfile={overlay_mute_text_path}:reload=1:fontcolor=white@0.76:fontsize=38:x=w-tw-34:y=h-th-72[v_composited]",
+            f"[v_phase]{overlay_penalty_filters['left']}=fontfile={primary_font_path}:textfile={overlay_left_penalty_text_path}:reload=1:fontcolor=white:fontsize=32:box=1:boxcolor=black@0.69:boxborderw={overlay_box_border}:x={sent_penalty_x_expressions['left']}:y=18[v_left_penalty]",
+            f"[v_left_penalty]{overlay_penalty_filters['right']}=fontfile={primary_font_path}:textfile={overlay_right_penalty_text_path}:reload=1:fontcolor=white:fontsize=32:box=1:boxcolor=black@0.69:boxborderw={overlay_box_border}:x={sent_penalty_x_expressions['right']}:y=18[v_right_penalty]",
+            f"[v_right_penalty]drawtext=fontfile={primary_font_path}:textfile={overlay_mute_text_path}:reload=1:fontcolor=white@0.76:fontsize=38:x=w-tw-34:y=h-th-72[v_composited]",
             '[v_composited]split=2[v_preview][v_webrtc]',
             f'[0:a]{audio_control_target}=volume={current_volume_level()},asplit=2[a_preview][a_webrtc]',
         ])
@@ -1181,6 +1308,7 @@ def apply_overlay_update(data):
             apply_phase_defaults(state['phase'])
         if clock_adjustment_seconds:
             adjust_pp_times(clock_adjustment_seconds)
+            penalty_game.adjust_remaining_seconds(clock_adjustment_seconds)
         # The UI posts the full form for mute/unmute actions, so `time` can be
         # present even when the operator did not edit the clock. Also, changing
         # clock mode or phase should not stop or start the clock by itself.
@@ -1253,6 +1381,65 @@ def update_state():
     if 'clock_running' in data and not isinstance(data['clock_running'], bool):
         data['clock_running'] = str(data['clock_running']).lower() in ('1', 'true', 'yes', 'on')
     updated_state = apply_overlay_update(data)
+    return jsonify(updated_state)
+
+@app.route('/api/penalties', methods=['POST'])
+def add_penalty():
+    data = request.get_json(silent=True) or {}
+    player = str(data.get('player', 'Player')).strip()
+    try:
+        team = Team(data.get('team'))
+        kind = PenaltyType(data.get('kind', PenaltyType.MINOR.value))
+        if not player:
+            raise ValueError('player is required')
+        with state_lock:
+            penalty_game.assess_penalty(team, player, kind)
+            updated_state = current_state_payload()
+    except (TypeError, ValueError) as error:
+        return jsonify({'error': str(error)}), 400
+    write_overlay_text()
+    socketio.emit('state_updated', updated_state)
+    return jsonify(updated_state)
+
+@app.route('/api/penalties/<int:penalty_id>', methods=['DELETE', 'PATCH'])
+def update_penalty(penalty_id):
+    with state_lock:
+        if request.method == 'DELETE':
+            penalty = penalty_game.cancel_penalty(penalty_id)
+        else:
+            data = request.get_json(silent=True) or {}
+            try:
+                if 'kind' in data:
+                    penalty = penalty_game.set_penalty_kind(penalty_id, PenaltyType(data['kind']))
+                elif 'remaining_time' in data:
+                    seconds = parse_clock(data['remaining_time'])
+                    if seconds is None:
+                        return jsonify({'error': 'remaining_time must be a valid M:SS value'}), 400
+                    penalty = penalty_game.set_remaining_seconds(penalty_id, seconds)
+                else:
+                    return jsonify({'error': 'kind or remaining_time is required'}), 400
+            except (TypeError, ValueError) as error:
+                return jsonify({'error': str(error)}), 400
+        if penalty is None:
+            return jsonify({'error': 'active penalty not found'}), 404
+        updated_state = current_state_payload()
+    write_overlay_text()
+    socketio.emit('state_updated', updated_state)
+    return jsonify(updated_state)
+
+@app.route('/api/goals/<team>', methods=['POST'])
+def record_goal(team):
+    try:
+        scoring_team = Team(team)
+    except ValueError:
+        return jsonify({'error': 'team must be home or away'}), 400
+    with state_lock:
+        score_key = 'left_score' if scoring_team is Team.HOME else 'right_score'
+        state[score_key] = str(int(normalize_score_value(state[score_key])) + 1)
+        penalty_game.record_goal(scoring_team)
+        updated_state = current_state_payload()
+    write_overlay_text()
+    socketio.emit('state_updated', updated_state)
     return jsonify(updated_state)
 
 @app.route('/api/stream/metrics', methods=['GET'])

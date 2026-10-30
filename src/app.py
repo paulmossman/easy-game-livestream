@@ -15,7 +15,7 @@ import urllib.request
 from urllib.parse import parse_qs
 import yaml
 from PIL import ImageFont
-from flask import Flask, render_template, request, jsonify, redirect, session, url_for
+from flask import Flask, Response, render_template, request, jsonify, redirect, session, url_for
 from flask_socketio import SocketIO, emit
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request as GoogleAuthRequest
@@ -122,6 +122,12 @@ ffmpeg_ready = False
 muted_volume_level = '0.001'
 normal_volume_level = '1.0'
 stream_monitor_interval_seconds = float(config.get('stream_monitor_interval_seconds', 1.0))
+# Detected from the overlay FFmpeg's input info while a stream is connected;
+# None when there is no stream. Sizes the "Show video" off preview.
+incoming_video_resolution = None
+default_video_resolution = '1280x720'
+video_resolution_pattern = re.compile(r'\b(\d{2,5})x(\d{2,5})\b')
+overlay_preview_background = '0x1b262d'
 mediamtx_api_url = config.get('mediamtx_api_url', 'http://mediamtx:9997/v3/paths/list')
 last_stream_ready_state = None
 audio_control_target = 'volume@audio_gain'
@@ -201,9 +207,26 @@ def stop_ffmpeg():
     stop_process(ffmpeg_process)
     ffmpeg_process = None
 
+def set_incoming_video_resolution(resolution):
+    global incoming_video_resolution
+    if resolution == incoming_video_resolution:
+        return
+    incoming_video_resolution = resolution
+    print(f"Incoming video resolution: {resolution or 'none'}", flush=True)
+    socketio.emit('state_updated', current_state_payload())
+
 def watch_ffmpeg(process):
     global ffmpeg_process, ffmpeg_ready
+    in_input_section = False
     for line in process.stderr:
+        if line.startswith('Input #'):
+            in_input_section = True
+        elif line.startswith('Output #'):
+            in_input_section = False
+        elif in_input_section and 'Video:' in line:
+            match = video_resolution_pattern.search(line.split('Video:', 1)[1])
+            if match:
+                set_incoming_video_resolution(f'{match.group(1)}x{match.group(2)}')
         # Filter out FFmpeg progress messages
         if "Press [q] to stop" in line or "Output #0, flv, to" in line:
             ffmpeg_ready = True
@@ -211,6 +234,9 @@ def watch_ffmpeg(process):
             print("FFmpeg stderr:", line.strip(), flush=True)
 
     return_code = process.wait()
+    # The stream is gone (or FFmpeg is restarting, in which case the new
+    # process reports the resolution again).
+    set_incoming_video_resolution(None)
     with process_lock:
         if ffmpeg_process is process:
             print(f"FFmpeg exited with code {return_code}", flush=True)
@@ -1170,6 +1196,39 @@ def start_relay_ffmpeg():
         with relay_metrics_lock:
             relay_metrics_session_id = None
 
+def overlay_video_filters(input_label, output_label, penalty_x):
+    # The single definition of the overlay. Used for the live stream and for
+    # the UI's "Show video" off preview (render_overlay_preview_jpeg), so the
+    # two always look identical.
+    return [
+        f"[{input_label}]drawtext=fontfile={primary_font_path}:textfile={overlay_left_text_path}:reload=1:fontcolor=white:fontsize={overlay_team_font_size}:box=1:boxcolor=black@0.69:boxborderw={overlay_box_border}:x={overlay_margin}:y=18[v_left]",
+        f"[v_left]drawtext=fontfile={primary_font_path}:textfile={overlay_right_text_path}:reload=1:fontcolor=white:fontsize={overlay_team_font_size}:box=1:boxcolor=black@0.69:boxborderw={overlay_box_border}:x=w-tw-{overlay_margin}:y=18[v_right]",
+        f"[v_right]drawtext=fontfile={primary_font_path}:textfile={overlay_time_text_path}:reload=1:fontcolor=white:fontsize={overlay_time_font_size}:box=1:boxcolor=black@0.69:boxborderw={overlay_box_border}:x=(w-tw)/2:y=18[v_time]",
+        f"[v_time]drawtext=fontfile={primary_font_path}:textfile={overlay_phase_text_path}:reload=1:fontcolor=white:fontsize=32:box=1:boxcolor=black@0.69:boxborderw=18:x=18:y=h-th-18[v_phase]",
+        f"[v_phase]{overlay_penalty_filters['left']}=fontfile={primary_font_path}:textfile={overlay_left_penalty_text_path}:reload=1:fontcolor=white:fontsize=32:box=1:boxcolor=black@0.69:boxborderw={overlay_box_border}:x={penalty_x['left']}:y=18[v_left_penalty]",
+        f"[v_left_penalty]{overlay_penalty_filters['right']}=fontfile={primary_font_path}:textfile={overlay_right_penalty_text_path}:reload=1:fontcolor=white:fontsize=32:box=1:boxcolor=black@0.69:boxborderw={overlay_box_border}:x={penalty_x['right']}:y=18[v_right_penalty]",
+        f"[v_right_penalty]drawtext=fontfile={primary_font_path}:textfile={overlay_mute_text_path}:reload=1:fontcolor=white@0.76:fontsize=38:x=w-tw-34:y=h-th-72[{output_label}]",
+    ]
+
+def render_overlay_preview_jpeg():
+    write_overlay_text()
+    penalty_x = penalty_x_expressions(current_overlay_text())
+    filter_complex = ';'.join(overlay_video_filters('0:v', 'v_out', penalty_x))
+    result = subprocess.run(
+        [
+            'ffmpeg', '-v', 'error',
+            '-f', 'lavfi', '-i', f'color=c={overlay_preview_background}:s={incoming_video_resolution or default_video_resolution}',
+            '-filter_complex', filter_complex,
+            '-map', '[v_out]', '-frames:v', '1',
+            '-f', 'image2pipe', '-c:v', 'mjpeg', '-q:v', '4', '-',
+        ],
+        capture_output=True,
+        timeout=10,
+    )
+    if result.returncode != 0 or not result.stdout:
+        raise RuntimeError(result.stderr.decode('utf-8', errors='replace').strip() or 'no output')
+    return result.stdout
+
 def run_ffmpeg():
     global ffmpeg_process, ffmpeg_ready
     input_url = current_input_url()
@@ -1182,14 +1241,7 @@ def run_ffmpeg():
         write_overlay_text(force=True)
         sent_penalty_x_expressions.clear()
         sent_penalty_x_expressions.update(penalty_x_expressions(current_overlay_text()))
-        filter_complex = ';'.join([
-            f"[0:v]drawtext=fontfile={primary_font_path}:textfile={overlay_left_text_path}:reload=1:fontcolor=white:fontsize={overlay_team_font_size}:box=1:boxcolor=black@0.69:boxborderw={overlay_box_border}:x={overlay_margin}:y=18[v_left]",
-            f"[v_left]drawtext=fontfile={primary_font_path}:textfile={overlay_right_text_path}:reload=1:fontcolor=white:fontsize={overlay_team_font_size}:box=1:boxcolor=black@0.69:boxborderw={overlay_box_border}:x=w-tw-{overlay_margin}:y=18[v_right]",
-            f"[v_right]drawtext=fontfile={primary_font_path}:textfile={overlay_time_text_path}:reload=1:fontcolor=white:fontsize={overlay_time_font_size}:box=1:boxcolor=black@0.69:boxborderw={overlay_box_border}:x=(w-tw)/2:y=18[v_time]",
-            f"[v_time]drawtext=fontfile={primary_font_path}:textfile={overlay_phase_text_path}:reload=1:fontcolor=white:fontsize=32:box=1:boxcolor=black@0.69:boxborderw=18:x=18:y=h-th-18[v_phase]",
-            f"[v_phase]{overlay_penalty_filters['left']}=fontfile={primary_font_path}:textfile={overlay_left_penalty_text_path}:reload=1:fontcolor=white:fontsize=32:box=1:boxcolor=black@0.69:boxborderw={overlay_box_border}:x={sent_penalty_x_expressions['left']}:y=18[v_left_penalty]",
-            f"[v_left_penalty]{overlay_penalty_filters['right']}=fontfile={primary_font_path}:textfile={overlay_right_penalty_text_path}:reload=1:fontcolor=white:fontsize=32:box=1:boxcolor=black@0.69:boxborderw={overlay_box_border}:x={sent_penalty_x_expressions['right']}:y=18[v_right_penalty]",
-            f"[v_right_penalty]drawtext=fontfile={primary_font_path}:textfile={overlay_mute_text_path}:reload=1:fontcolor=white@0.76:fontsize=38:x=w-tw-34:y=h-th-72[v_composited]",
+        filter_complex = ';'.join(overlay_video_filters('0:v', 'v_composited', sent_penalty_x_expressions) + [
             '[v_composited]split=2[v_preview][v_webrtc]',
             f'[0:a]{audio_control_target}=volume={current_volume_level()},asplit=2[a_preview][a_webrtc]',
         ])
@@ -1361,6 +1413,15 @@ def index():
         phases=phase_configurations,
         initial_phase=initial_phase_name,
     )
+
+@app.route('/api/overlay-preview.jpg')
+def overlay_preview():
+    try:
+        jpeg = render_overlay_preview_jpeg()
+    except (OSError, RuntimeError, subprocess.TimeoutExpired) as error:
+        print(f"Overlay preview render failed: {error}", flush=True)
+        return jsonify({'error': 'overlay preview render failed'}), 500
+    return Response(jpeg, mimetype='image/jpeg', headers={'Cache-Control': 'no-store'})
 
 @app.route('/youtube-stop')
 def youtube_stop_page():

@@ -590,82 +590,12 @@
             background: #12181d;
         }
 
-        /* These overlays are displayed when "Show video" is de-selected. */
+        /* Shown when "Show video" is de-selected: a frame rendered server-side
+           by FFmpeg with the same overlay filters as the live stream. */
         .overlay-mock {
-            position: relative;
-            container-type: inline-size;
-            background:
-                radial-gradient(circle at top center, rgba(14, 154, 127, 0.18), transparent 35%),
-                linear-gradient(180deg, #1b262d 0%, #10171c 100%);
-        }
-
-        .overlay-chip {
-            position: absolute;
-            max-width: calc(100% - 36px);
-            padding: 12px 18px;
-            border-radius: 18px;
-            background: rgba(0, 0, 0, 0.69);
-            color: white;
-            font-weight: 900;
-            line-height: 1.1;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        .overlay-chip.left {
-            top: 0;
-            left: 0;
-            font-size: 1.1rem;
-        }
-
-        .overlay-chip.right {
-            top: 0;
-            right: 0;
-            font-size: 1.1rem;
-            text-align: right;
-        }
-
-        .overlay-chip.time {
-            top: 0;
-            left: 50%;
-            transform: translateX(-50%);
-            box-sizing: border-box;
-            max-width: calc(16% - 8px);
-            padding: 8px 0.75cqw;
-            font-size: clamp(0.8rem, 3.6cqw, 1.8rem);
-            text-overflow: clip;
-        }
-
-        /* `left` is set by positionOverlayPenalties() in app.js, matching the
-           FFmpeg overlay: centred between the team chip and the time chip. */
-        .overlay-chip.penalty {
-            top: 0;
-            transform: translateX(-50%);
-            box-sizing: border-box;
-            width: max-content;
-            max-width: none;
-            padding: 8px 0.75cqw;
-            font-size: clamp(0.7rem, 2.8cqw, 1.4rem);
-            overflow: visible;
-            text-overflow: clip;
-        }
-
-        .overlay-chip.phase {
-            left: 0;
-            bottom: 0;
-            font-size: 1rem;
-        }
-
-        .overlay-mute {
-            position: absolute;
-            right: 10px;
-            bottom: 10px;
-            font-size: 1.1rem;
-            font-weight: 900;
-            letter-spacing: 0.08em;
-            line-height: 1;
-            color: rgba(255, 255, 255, 0.78);
+            display: block;
+            object-fit: contain;
+            background: #1b262d;
         }
 
         .visually-hidden {
@@ -1126,15 +1056,7 @@
                         playsinline
                         controls
                     ></video>
-                    <div id="overlay-mock" class="overlay-mock is-hidden" aria-hidden="true">
-                        <div id="overlay-left-text" class="overlay-chip left">Left: 0</div>
-                        <div id="overlay-right-text" class="overlay-chip right">Right: 0</div>
-                        <div id="overlay-time-text" class="overlay-chip time">20:00</div>
-                        <div id="overlay-left-penalty" class="overlay-chip penalty left-penalty is-hidden"></div>
-                        <div id="overlay-right-penalty" class="overlay-chip penalty right-penalty is-hidden"></div>
-                        <div id="overlay-phase-text" class="overlay-chip phase">{{ initial_phase }}</div>
-                        <div id="overlay-mute-icon" class="overlay-mute is-hidden">MUTED</div>
-                    </div>
+                    <img id="overlay-mock" class="overlay-mock is-hidden" alt="Overlay preview">
                 </div>
                 <div class="preview-options">
                     <label class="option-row preview-toggle-row">

@@ -122,11 +122,10 @@ ffmpeg_ready = False
 muted_volume_level = '0.001'
 normal_volume_level = '1.0'
 stream_monitor_interval_seconds = float(config.get('stream_monitor_interval_seconds', 1.0))
-# Detected from the overlay FFmpeg's input info while a stream is connected;
-# None when there is no stream. Sizes the "Show video" off preview.
+# Probed from the incoming stream just before the overlay FFmpeg starts; None
+# when there is no stream. Overlay sizes scale with it (see overlay_layout).
 incoming_video_resolution = None
 default_video_resolution = '1280x720'
-video_resolution_pattern = re.compile(r'\b(\d{2,5})x(\d{2,5})\b')
 overlay_preview_background = '0x1b262d'
 mediamtx_api_url = config.get('mediamtx_api_url', 'http://mediamtx:9997/v3/paths/list')
 last_stream_ready_state = None
@@ -169,10 +168,18 @@ overlay_mute_text_path = '/tmp/overlay-mute.txt'
 overlay_left_penalty_text_path = '/tmp/overlay-left-penalty.txt'
 overlay_right_penalty_text_path = '/tmp/overlay-right-penalty.txt'
 last_overlay_signature = None
-overlay_margin = 18
-overlay_box_border = 18
-overlay_team_font_size = 38
-overlay_time_font_size = 44
+# Overlay sizes in pixels at 1280x720. overlay_layout() scales them to the
+# actual video so the overlay is the same size relative to the frame.
+overlay_base_layout = {
+    'margin': 18,
+    'box_border': 18,
+    'team_font': 38,
+    'time_font': 44,
+    'small_font': 32,
+    'mute_font': 38,
+    'mute_right': 34,
+    'mute_bottom': 72,
+}
 overlay_penalty_filters = {'left': 'drawtext@left_penalty', 'right': 'drawtext@right_penalty'}
 sent_penalty_x_expressions = {}
 overlay_fonts = {}
@@ -185,6 +192,7 @@ def cleanup_ffmpeg():
     global ffmpeg_process, ffmpeg_ready
     ffmpeg_process = None
     ffmpeg_ready = False
+    set_incoming_video_resolution(None)
 
 def is_ffmpeg_running():
     return ffmpeg_process is not None and ffmpeg_process.poll() is None
@@ -215,18 +223,32 @@ def set_incoming_video_resolution(resolution):
     print(f"Incoming video resolution: {resolution or 'none'}", flush=True)
     socketio.emit('state_updated', current_state_payload())
 
+def probe_video_resolution(url):
+    try:
+        result = subprocess.run(
+            ['ffprobe', '-v', 'error', '-select_streams', 'v:0',
+             '-show_entries', 'stream=width,height', '-of', 'csv=s=x:p=0', url],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except (OSError, subprocess.TimeoutExpired) as e:
+        print(f"Could not probe incoming video resolution: {e}", flush=True)
+        return None
+    match = re.fullmatch(r'(\d+)x(\d+)', result.stdout.strip())
+    if not match:
+        print(f"Could not probe incoming video resolution: {result.stderr.strip()}", flush=True)
+        return None
+    return f'{match.group(1)}x{match.group(2)}'
+
+def overlay_layout(resolution=None):
+    width, height = (int(value) for value in (resolution or default_video_resolution).split('x'))
+    scale = min(width / 1280, height / 720)
+    return {key: max(1, round(value * scale)) for key, value in overlay_base_layout.items()}
+
 def watch_ffmpeg(process):
     global ffmpeg_process, ffmpeg_ready
-    in_input_section = False
     for line in process.stderr:
-        if line.startswith('Input #'):
-            in_input_section = True
-        elif line.startswith('Output #'):
-            in_input_section = False
-        elif in_input_section and 'Video:' in line:
-            match = video_resolution_pattern.search(line.split('Video:', 1)[1])
-            if match:
-                set_incoming_video_resolution(f'{match.group(1)}x{match.group(2)}')
         # Filter out FFmpeg progress messages
         if "Press [q] to stop" in line or "Output #0, flv, to" in line:
             ffmpeg_ready = True
@@ -234,9 +256,6 @@ def watch_ffmpeg(process):
             print("FFmpeg stderr:", line.strip(), flush=True)
 
     return_code = process.wait()
-    # The stream is gone (or FFmpeg is restarting, in which case the new
-    # process reports the resolution again).
-    set_incoming_video_resolution(None)
     with process_lock:
         if ffmpeg_process is process:
             print(f"FFmpeg exited with code {return_code}", flush=True)
@@ -469,23 +488,23 @@ def overlay_text_width(text, font_size):
         overlay_fonts[font_size] = ImageFont.truetype(primary_font_path, font_size)
     return overlay_fonts[font_size].getlength(text)
 
-def penalty_x_expressions(overlay_text):
+def penalty_x_expressions(overlay_text, layout):
     # Centre each penalty box in the gap between its team's box and the
     # centred time box. drawtext boxes extend the same border on every side,
     # so the borders cancel out of the midpoint. `tw` is the penalty text's
     # own width, which FFmpeg evaluates per frame.
-    left_width = round(overlay_text_width(overlay_text['left'], overlay_team_font_size))
-    right_width = round(overlay_text_width(overlay_text['right'], overlay_team_font_size))
-    time_width = round(overlay_text_width(overlay_text['time'], overlay_time_font_size))
+    left_width = round(overlay_text_width(overlay_text['left'], layout['team_font']))
+    right_width = round(overlay_text_width(overlay_text['right'], layout['team_font']))
+    time_width = round(overlay_text_width(overlay_text['time'], layout['time_font']))
     return {
-        'left': f"({overlay_margin + left_width}+(w-{time_width})/2)/2-tw/2",
-        'right': f"(w-{overlay_margin + right_width}+(w+{time_width})/2)/2-tw/2",
+        'left': f"({layout['margin'] + left_width}+(w-{time_width})/2)/2-tw/2",
+        'right': f"(w-{layout['margin'] + right_width}+(w+{time_width})/2)/2-tw/2",
     }
 
 def sync_penalty_overlay_positions(overlay_text):
     if not is_ffmpeg_running() or not ffmpeg_ready:
         return
-    for side, expression in penalty_x_expressions(overlay_text).items():
+    for side, expression in penalty_x_expressions(overlay_text, overlay_layout(incoming_video_resolution)).items():
         if sent_penalty_x_expressions.get(side) == expression:
             continue
         if send_ffmpeg_stdin_command(f'{overlay_penalty_filters[side]} -1 x {expression}'):
@@ -1196,28 +1215,32 @@ def start_relay_ffmpeg():
         with relay_metrics_lock:
             relay_metrics_session_id = None
 
-def overlay_video_filters(input_label, output_label, penalty_x):
+def overlay_video_filters(input_label, output_label, penalty_x, layout):
     # The single definition of the overlay. Used for the live stream and for
     # the UI's "Show video" off preview (render_overlay_preview_jpeg), so the
     # two always look identical.
+    box = f"box=1:boxcolor=black@0.69:boxborderw={layout['box_border']}"
+    margin = layout['margin']
     return [
-        f"[{input_label}]drawtext=fontfile={primary_font_path}:textfile={overlay_left_text_path}:reload=1:fontcolor=white:fontsize={overlay_team_font_size}:box=1:boxcolor=black@0.69:boxborderw={overlay_box_border}:x={overlay_margin}:y=18[v_left]",
-        f"[v_left]drawtext=fontfile={primary_font_path}:textfile={overlay_right_text_path}:reload=1:fontcolor=white:fontsize={overlay_team_font_size}:box=1:boxcolor=black@0.69:boxborderw={overlay_box_border}:x=w-tw-{overlay_margin}:y=18[v_right]",
-        f"[v_right]drawtext=fontfile={primary_font_path}:textfile={overlay_time_text_path}:reload=1:fontcolor=white:fontsize={overlay_time_font_size}:box=1:boxcolor=black@0.69:boxborderw={overlay_box_border}:x=(w-tw)/2:y=18[v_time]",
-        f"[v_time]drawtext=fontfile={primary_font_path}:textfile={overlay_phase_text_path}:reload=1:fontcolor=white:fontsize=32:box=1:boxcolor=black@0.69:boxborderw=18:x=18:y=h-th-18[v_phase]",
-        f"[v_phase]{overlay_penalty_filters['left']}=fontfile={primary_font_path}:textfile={overlay_left_penalty_text_path}:reload=1:fontcolor=white:fontsize=32:box=1:boxcolor=black@0.69:boxborderw={overlay_box_border}:x={penalty_x['left']}:y=18[v_left_penalty]",
-        f"[v_left_penalty]{overlay_penalty_filters['right']}=fontfile={primary_font_path}:textfile={overlay_right_penalty_text_path}:reload=1:fontcolor=white:fontsize=32:box=1:boxcolor=black@0.69:boxborderw={overlay_box_border}:x={penalty_x['right']}:y=18[v_right_penalty]",
-        f"[v_right_penalty]drawtext=fontfile={primary_font_path}:textfile={overlay_mute_text_path}:reload=1:fontcolor=white@0.76:fontsize=38:x=w-tw-34:y=h-th-72[{output_label}]",
+        f"[{input_label}]drawtext=fontfile={primary_font_path}:textfile={overlay_left_text_path}:reload=1:fontcolor=white:fontsize={layout['team_font']}:{box}:x={margin}:y={margin}[v_left]",
+        f"[v_left]drawtext=fontfile={primary_font_path}:textfile={overlay_right_text_path}:reload=1:fontcolor=white:fontsize={layout['team_font']}:{box}:x=w-tw-{margin}:y={margin}[v_right]",
+        f"[v_right]drawtext=fontfile={primary_font_path}:textfile={overlay_time_text_path}:reload=1:fontcolor=white:fontsize={layout['time_font']}:{box}:x=(w-tw)/2:y={margin}[v_time]",
+        f"[v_time]drawtext=fontfile={primary_font_path}:textfile={overlay_phase_text_path}:reload=1:fontcolor=white:fontsize={layout['small_font']}:{box}:x={margin}:y=h-th-{margin}[v_phase]",
+        f"[v_phase]{overlay_penalty_filters['left']}=fontfile={primary_font_path}:textfile={overlay_left_penalty_text_path}:reload=1:fontcolor=white:fontsize={layout['small_font']}:{box}:x={penalty_x['left']}:y={margin}[v_left_penalty]",
+        f"[v_left_penalty]{overlay_penalty_filters['right']}=fontfile={primary_font_path}:textfile={overlay_right_penalty_text_path}:reload=1:fontcolor=white:fontsize={layout['small_font']}:{box}:x={penalty_x['right']}:y={margin}[v_right_penalty]",
+        f"[v_right_penalty]drawtext=fontfile={primary_font_path}:textfile={overlay_mute_text_path}:reload=1:fontcolor=white@0.76:fontsize={layout['mute_font']}:x=w-tw-{layout['mute_right']}:y=h-th-{layout['mute_bottom']}[{output_label}]",
     ]
 
 def render_overlay_preview_jpeg():
     write_overlay_text()
-    penalty_x = penalty_x_expressions(current_overlay_text())
-    filter_complex = ';'.join(overlay_video_filters('0:v', 'v_out', penalty_x))
+    resolution = incoming_video_resolution or default_video_resolution
+    layout = overlay_layout(resolution)
+    penalty_x = penalty_x_expressions(current_overlay_text(), layout)
+    filter_complex = ';'.join(overlay_video_filters('0:v', 'v_out', penalty_x, layout))
     result = subprocess.run(
         [
             'ffmpeg', '-v', 'error',
-            '-f', 'lavfi', '-i', f'color=c={overlay_preview_background}:s={incoming_video_resolution or default_video_resolution}',
+            '-f', 'lavfi', '-i', f'color=c={overlay_preview_background}:s={resolution}',
             '-filter_complex', filter_complex,
             '-map', '[v_out]', '-frames:v', '1',
             '-f', 'image2pipe', '-c:v', 'mjpeg', '-q:v', '4', '-',
@@ -1238,10 +1261,12 @@ def run_ffmpeg():
     try:
         stop_ffmpeg()
         ffmpeg_ready = False
+        set_incoming_video_resolution(probe_video_resolution(input_url))
+        layout = overlay_layout(incoming_video_resolution)
         write_overlay_text(force=True)
         sent_penalty_x_expressions.clear()
-        sent_penalty_x_expressions.update(penalty_x_expressions(current_overlay_text()))
-        filter_complex = ';'.join(overlay_video_filters('0:v', 'v_composited', sent_penalty_x_expressions) + [
+        sent_penalty_x_expressions.update(penalty_x_expressions(current_overlay_text(), layout))
+        filter_complex = ';'.join(overlay_video_filters('0:v', 'v_composited', sent_penalty_x_expressions, layout) + [
             '[v_composited]split=2[v_preview][v_webrtc]',
             f'[0:a]{audio_control_target}=volume={current_volume_level()},asplit=2[a_preview][a_webrtc]',
         ])
@@ -1318,6 +1343,7 @@ def monitor_stream():
             elif not ready and running:
                 print("MediaMTX stream is not ready; stopping FFmpeg", flush=True)
                 stop_ffmpeg()
+                set_incoming_video_resolution(None)
             elif running and not is_relay_ffmpeg_running():
                 start_relay_ffmpeg()
         time.sleep(stream_monitor_interval_seconds)

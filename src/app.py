@@ -176,9 +176,6 @@ overlay_base_layout = {
     'team_font': 38,
     'time_font': 44,
     'small_font': 32,
-    'mute_font': 38,
-    'mute_right': 34,
-    'mute_bottom': 72,
 }
 overlay_penalty_filters = {'left': 'drawtext@left_penalty', 'right': 'drawtext@right_penalty'}
 sent_penalty_x_expressions = {}
@@ -1228,7 +1225,7 @@ def overlay_video_filters(input_label, output_label, penalty_x, layout):
         f"[v_time]drawtext=fontfile={primary_font_path}:textfile={overlay_phase_text_path}:reload=1:fontcolor=white:fontsize={layout['small_font']}:{box}:x={margin}:y=h-th-{margin}[v_phase]",
         f"[v_phase]{overlay_penalty_filters['left']}=fontfile={primary_font_path}:textfile={overlay_left_penalty_text_path}:reload=1:fontcolor=white:fontsize={layout['small_font']}:{box}:x={penalty_x['left']}:y={margin}[v_left_penalty]",
         f"[v_left_penalty]{overlay_penalty_filters['right']}=fontfile={primary_font_path}:textfile={overlay_right_penalty_text_path}:reload=1:fontcolor=white:fontsize={layout['small_font']}:{box}:x={penalty_x['right']}:y={margin}[v_right_penalty]",
-        f"[v_right_penalty]drawtext=fontfile={primary_font_path}:textfile={overlay_mute_text_path}:reload=1:fontcolor=white@0.76:fontsize={layout['mute_font']}:x=w-tw-{layout['mute_right']}:y=h-th-{layout['mute_bottom']}[{output_label}]",
+        f"[v_right_penalty]drawtext=fontfile={primary_font_path}:textfile={overlay_mute_text_path}:reload=1:fontcolor=white:fontsize={layout['small_font']}:{box}:x=(w-tw)/2:y=h-th-{margin}[{output_label}]",
     ]
 
 def render_overlay_preview_jpeg():

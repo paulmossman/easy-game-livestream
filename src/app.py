@@ -762,9 +762,11 @@ def build_rtmp_url(base_url, stream_key):
         return f"{base_url}{stream_key}"
     return f"{base_url}/{stream_key}"
 
-def current_preview_output_url():
-    output_base = config.get('preview_output_url') or config.get('output_url') or 'rtmp://mediamtx/live/'
-    output_key = config.get('preview_stream_key') or config.get('output_stream_key') or 'preview_hls'
+def current_program_output_url():
+    # The overlaid program feed: what the relay sends to YouTube, also served
+    # as the HLS preview. preview_* and output_* are older names for the keys.
+    output_base = config.get('program_output_url') or config.get('preview_output_url') or config.get('output_url') or 'rtmp://mediamtx/live/'
+    output_key = config.get('program_stream_key') or config.get('preview_stream_key') or config.get('output_stream_key') or 'preview_hls'
     return build_rtmp_url(output_base, output_key)
 
 def current_webrtc_preview_output_url():
@@ -1248,7 +1250,7 @@ def start_relay_ffmpeg():
     if is_relay_ffmpeg_running():
         return
 
-    input_url = current_preview_output_url()
+    input_url = current_program_output_url()
     if not mediamtx_path_ready(stream_path_from_url(input_url)):
         return
 
@@ -1336,7 +1338,7 @@ def render_overlay_preview_jpeg():
 def run_ffmpeg():
     global ffmpeg_process, ffmpeg_ready
     input_url = current_input_url()
-    preview_output_url = current_preview_output_url()
+    program_output_url = current_program_output_url()
     webrtc_output_url = current_webrtc_preview_output_url()
     
     try:
@@ -1350,16 +1352,16 @@ def run_ffmpeg():
         sent_message_options.clear()
         sent_message_options.update(message_filter_options(layout))
         filter_complex = ';'.join(overlay_video_filters('0:v', 'v_composited', sent_penalty_x_expressions, sent_message_options, layout) + [
-            '[v_composited]split=2[v_preview][v_webrtc]',
-            f'[0:a]{audio_control_target}=volume={current_volume_level()},asplit=2[a_preview][a_webrtc]',
+            '[v_composited]split=2[v_program][v_webrtc]',
+            f'[0:a]{audio_control_target}=volume={current_volume_level()},asplit=2[a_program][a_webrtc]',
         ])
         cmd = [
             'ffmpeg',
             '-rtmp_live', 'live',
             '-i', input_url,
             '-filter_complex', filter_complex,
-            '-map', '[v_preview]',
-            '-map', '[a_preview]',
+            '-map', '[v_program]',
+            '-map', '[a_program]',
             '-c:v', 'libx264',
             '-pix_fmt', 'yuv420p',
             '-preset', 'veryfast',
@@ -1370,7 +1372,7 @@ def run_ffmpeg():
             '-bf', '0',
             '-c:a', 'aac',
             '-f', 'flv',
-            preview_output_url,
+            program_output_url,
             '-map', '[v_webrtc]',
             '-map', '[a_webrtc]',
             '-c:v', 'libx264',

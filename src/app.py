@@ -130,6 +130,7 @@ stream_monitor_interval_seconds = float(config.get('stream_monitor_interval_seco
 # Probed from the incoming stream just before the overlay FFmpeg starts; None
 # when there is no stream. Overlay sizes scale with it (see overlay_layout).
 incoming_video_resolution = None
+incoming_video_frame_rate = None
 default_video_resolution = '1280x720'
 overlay_preview_background = '0x1b262d'
 mediamtx_api_url = config.get('mediamtx_api_url', 'http://mediamtx:9997/v3/paths/list')
@@ -162,6 +163,10 @@ runtime_youtube_destination = {
     'stream_key': None,
     'ingestion_address': None,
 }
+# What "Create New Stream" declares to YouTube. The relay copies the video
+# as-is, so this isn't necessarily what is actually sent.
+youtube_stream_resolution = '720p'
+youtube_stream_frame_rate = '30fps'
 inactive_youtube_broadcast_statuses = {'complete', 'deleted'}
 deletable_youtube_broadcast_statuses = {'created', 'ready'}
 primary_font_path = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'
@@ -205,7 +210,7 @@ def cleanup_ffmpeg():
     global ffmpeg_process, ffmpeg_ready
     ffmpeg_process = None
     ffmpeg_ready = False
-    set_incoming_video_resolution(None)
+    set_incoming_video_format(None, None)
 
 def is_ffmpeg_running():
     return ffmpeg_process is not None and ffmpeg_process.poll() is None
@@ -228,31 +233,47 @@ def stop_ffmpeg():
     stop_process(ffmpeg_process)
     ffmpeg_process = None
 
-def set_incoming_video_resolution(resolution):
-    global incoming_video_resolution
-    if resolution == incoming_video_resolution:
+def set_incoming_video_format(resolution, frame_rate):
+    global incoming_video_resolution, incoming_video_frame_rate
+    if (resolution, frame_rate) == (incoming_video_resolution, incoming_video_frame_rate):
         return
     incoming_video_resolution = resolution
-    print(f"Incoming video resolution: {resolution or 'none'}", flush=True)
+    incoming_video_frame_rate = frame_rate
+    print(f"Incoming video: {resolution or 'none'} at {frame_rate or 'unknown'} fps", flush=True)
     socketio.emit('state_updated', current_state_payload())
 
-def probe_video_resolution(url):
+def format_frame_rate(rate):
+    # ffprobe gives a fraction such as "30/1" or "30000/1001".
+    match = re.fullmatch(r'(\d+)/(\d+)', rate or '')
+    if not match or int(match.group(2)) == 0:
+        return None
+    return f'{int(match.group(1)) / int(match.group(2)):.2f}'.rstrip('0').rstrip('.')
+
+def resolution_label(resolution):
+    # "1280x720" -> "720p". Uses the shorter side, so a portrait stream
+    # (720x1280) is also "720p".
+    if not resolution:
+        return None
+    return f"{min(int(value) for value in resolution.split('x'))}p"
+
+def probe_video_format(url):
+    # Returns (resolution, frame rate), or (None, None) if the probe fails.
     try:
         result = subprocess.run(
             ['ffprobe', '-v', 'error', '-select_streams', 'v:0',
-             '-show_entries', 'stream=width,height', '-of', 'csv=s=x:p=0', url],
+             '-show_entries', 'stream=width,height,r_frame_rate', '-of', 'json', url],
             capture_output=True,
             text=True,
             timeout=15,
         )
-    except (OSError, subprocess.TimeoutExpired) as e:
-        print(f"Could not probe incoming video resolution: {e}", flush=True)
-        return None
-    match = re.fullmatch(r'(\d+)x(\d+)', result.stdout.strip())
-    if not match:
-        print(f"Could not probe incoming video resolution: {result.stderr.strip()}", flush=True)
-        return None
-    return f'{match.group(1)}x{match.group(2)}'
+        stream = (json.loads(result.stdout or '{}').get('streams') or [{}])[0]
+    except (OSError, subprocess.TimeoutExpired, ValueError) as e:
+        print(f"Could not probe incoming video: {e}", flush=True)
+        return None, None
+    if not stream.get('width') or not stream.get('height'):
+        print(f"Could not probe incoming video: {result.stderr.strip()}", flush=True)
+        return None, None
+    return f"{stream['width']}x{stream['height']}", format_frame_rate(stream.get('r_frame_rate'))
 
 def overlay_layout(resolution=None):
     width, height = (int(value) for value in (resolution or default_video_resolution).split('x'))
@@ -285,6 +306,7 @@ def watch_relay_ffmpeg(process):
         if relay_ffmpeg_process is process:
             print(f"Relay FFmpeg exited with code {return_code}", flush=True)
             relay_ffmpeg_process = None
+    socketio.emit('state_updated', current_state_payload())
 
 def parse_ffmpeg_time(value):
     try:
@@ -590,6 +612,14 @@ def current_state_payload():
         for penalty in penalty_game.active_penalties()
     ]
     payload['phase_has_duration'] = phase_has_duration(state['phase'])
+    relay_running = is_relay_ffmpeg_running()
+    payload['stream_quality'] = {
+        'incoming': {'resolution': resolution_label(incoming_video_resolution), 'fps': incoming_video_frame_rate},
+        'outgoing': {
+            'resolution': youtube_stream_resolution if relay_running else None,
+            'fps': youtube_stream_frame_rate.replace('fps', '') if relay_running else None,
+        },
+    }
     return payload
 
 def normalize_score_value(value):
@@ -959,9 +989,9 @@ def create_youtube_broadcast_for_channel(channel_id, left_team=None, right_team=
                 'description': f'Created by easy-game-livestream for {selected_channel["title"]}',
             },
             'cdn': {
-                'frameRate': '30fps',
+                'frameRate': youtube_stream_frame_rate,
                 'ingestionType': 'rtmp',
-                'resolution': '720p',
+                'resolution': youtube_stream_resolution,
             },
             'contentDetails': {
                 'isReusable': False,
@@ -1065,6 +1095,7 @@ def stop_relay_ffmpeg():
         if relay_ffmpeg_process is not None:
             stop_process(relay_ffmpeg_process)
             relay_ffmpeg_process = None
+    socketio.emit('state_updated', current_state_payload())
 
 def current_youtube_broadcast_status(service, broadcast_id):
     response = service.liveBroadcasts().list(
@@ -1251,6 +1282,7 @@ def start_relay_ffmpeg():
             args=(relay_ffmpeg_process, session_id),
             daemon=True,
         ).start()
+        socketio.emit('state_updated', current_state_payload())
     except Exception as e:
         print(f"Error starting relay FFmpeg: {e}", flush=True)
         relay_ffmpeg_process = None
@@ -1310,7 +1342,7 @@ def run_ffmpeg():
     try:
         stop_ffmpeg()
         ffmpeg_ready = False
-        set_incoming_video_resolution(probe_video_resolution(input_url))
+        set_incoming_video_format(*probe_video_format(input_url))
         layout = overlay_layout(incoming_video_resolution)
         write_overlay_text(force=True)
         sent_penalty_x_expressions.clear()
@@ -1394,7 +1426,7 @@ def monitor_stream():
             elif not ready and running:
                 print("MediaMTX stream is not ready; stopping FFmpeg", flush=True)
                 stop_ffmpeg()
-                set_incoming_video_resolution(None)
+                set_incoming_video_format(None, None)
             elif running and not is_relay_ffmpeg_running():
                 start_relay_ffmpeg()
         time.sleep(stream_monitor_interval_seconds)

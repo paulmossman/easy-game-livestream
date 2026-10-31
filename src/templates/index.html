@@ -306,8 +306,39 @@
             gap: 6px;
         }
 
-        .audio-copy > .status-line {
+        .audio-copy > .status-line,
+        .audio-copy > .stream-quality {
             grid-column: 1 / -1;
+        }
+
+        .stream-quality {
+            width: fit-content;
+            margin-top: 8px;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+        }
+
+        .stream-quality th,
+        .stream-quality td {
+            padding: 4px 16px 4px 0;
+            text-align: left;
+        }
+
+        .stream-quality thead th {
+            font-size: 0.82rem;
+            font-weight: 800;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: rgba(31, 26, 23, 0.7);
+            border-bottom: 1px solid var(--line);
+        }
+
+        .stream-quality tbody th {
+            font-weight: 800;
+        }
+
+        .stream-quality td {
+            font-variant-numeric: tabular-nums;
         }
 
         .audio-label {
@@ -1204,6 +1235,27 @@
                             <div id="youtube-status" class="audio-value">Not connected</div>
                             <a id="youtube-detail" class="status-line" target="_blank" rel="noopener noreferrer">Create a stream when you are ready to go live.</a>
                             <div id="youtube-stream-health" class="status-line is-hidden"></div>
+                            <table class="stream-quality">
+                                <thead>
+                                    <tr>
+                                        <th scope="col">Quality</th>
+                                        <th scope="col">Resolution</th>
+                                        <th scope="col">FPS</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <th scope="row">Incoming</th>
+                                        <td id="incoming-resolution">-</td>
+                                        <td id="incoming-fps">-</td>
+                                    </tr>
+                                    <tr>
+                                        <th scope="row">Outgoing</th>
+                                        <td id="outgoing-resolution">-</td>
+                                        <td id="outgoing-fps">-</td>
+                                    </tr>
+                                </tbody>
+                            </table>
                         </div>
                         <section id="relay-metrics" class="relay-metrics is-hidden" aria-label="YouTube relay metrics">
                             <div class="relay-metrics-chart-wrap">

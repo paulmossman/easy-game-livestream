@@ -793,6 +793,7 @@ function renderState(state) {
         'Right'
     );
     refreshOverlayPreview();
+    renderStreamQuality(state.stream_quality || {});
 
     const toggleButton = document.getElementById('start-stop-button');
     const muteOnStop = document.getElementById('mute-on-stop');
@@ -833,6 +834,14 @@ function renderState(state) {
 
     muteToggleButton.textContent = isMuted ? 'Un-mute' : 'Mute';
     muteToggleButton.classList.toggle('is-hidden', Boolean(state.mute_on_stop));
+}
+
+function renderStreamQuality(quality) {
+    ['incoming', 'outgoing'].forEach((direction) => {
+        const values = quality[direction] || {};
+        document.getElementById(`${direction}-resolution`).textContent = values.resolution || '-';
+        document.getElementById(`${direction}-fps`).textContent = values.fps || '-';
+    });
 }
 
 async function postState(data) {

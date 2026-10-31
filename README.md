@@ -119,3 +119,7 @@ The application uses MediaMTX to receive the RTMP stream from PRISM, and ffmpeg 
 Use `preview_output_url` / `preview_stream_key` for the local RTMP/HLS program feed, `webrtc_preview_output_url` / `webrtc_preview_stream_key` for the low-latency WebRTC preview target, and `youtube_output_url` / `youtube_stream_key` for the upstream RTMP destination.
 
 If you use the optional Web UI `Create New Stream` flow, you can also set `youtube_privacy_status` in `config/config.yml` to control the visibility of newly created YouTube broadcasts. Supported values are `public`, `unlisted`, and `private`. If you do not set it, the app currently defaults to `public`. This setting does not affect the manual YouTube Studio flow, since visibility is chosen directly in YouTube Studio there.
+
+## Configuration File
+
+- `youtube_description`: description for YouTube broadcasts made with the Web UI `Create New Stream` flow. Empty by default. For several lines, use a YAML block scalar (`|`). YouTube rejects `<` and `>`.

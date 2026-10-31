@@ -281,8 +281,11 @@ function youtubeStreamHealthText(activeDestination) {
 
 function drawRelayMetricsChart(samples) {
     const canvas = document.getElementById('relay-metrics-chart');
-    const bounds = canvas.getBoundingClientRect();
-    if (!bounds.width || !samples.length) {
+    // Draw in the canvas's CSS size. getBoundingClientRect() is reduced by the
+    // body's CSS zoom, so it is only used to keep the backing store sharp.
+    const width = canvas.clientWidth;
+    const height = canvas.clientHeight;
+    if (!width || !samples.length) {
         return;
     }
 
@@ -292,15 +295,15 @@ function drawRelayMetricsChart(samples) {
     }).format(latestSampleTime);
     document.getElementById('relay-metrics-sample-time').textContent = sampleTimeText;
 
-    const pixelRatio = window.devicePixelRatio || 1;
-    canvas.width = Math.round(bounds.width * pixelRatio);
-    canvas.height = Math.round(bounds.height * pixelRatio);
+    const pixelRatio = (window.devicePixelRatio || 1) * (canvas.getBoundingClientRect().width / width);
+    canvas.width = Math.round(width * pixelRatio);
+    canvas.height = Math.round(height * pixelRatio);
     const context = canvas.getContext('2d');
     context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
-    context.clearRect(0, 0, bounds.width, bounds.height);
+    context.clearRect(0, 0, width, height);
 
     const left = 42;
-    const right = bounds.width - 8;
+    const right = width - 8;
     const chartWidth = Math.max(1, right - left);
     const windowEnd = Date.now() / 1000;
     const windowSeconds = relayMetricsWindowMinutes * 60;

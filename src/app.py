@@ -106,6 +106,11 @@ state = {
     'incoming_audio_label': 'Waiting for stream',
     'incoming_audio_active': False,
     'incoming_stream_ready': False,
+    'message_text': '',
+    'message_show': False,
+    'message_bold': True,
+    'message_centered': True,
+    'message_background': True,
 }
 penalty_game = PenaltyStateMachine()
 ffmpeg_process = None
@@ -160,6 +165,7 @@ runtime_youtube_destination = {
 inactive_youtube_broadcast_statuses = {'complete', 'deleted'}
 deletable_youtube_broadcast_statuses = {'created', 'ready'}
 primary_font_path = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'
+regular_font_path = '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'
 overlay_left_text_path = '/tmp/overlay-left.txt'
 overlay_right_text_path = '/tmp/overlay-right.txt'
 overlay_phase_text_path = '/tmp/overlay-phase.txt'
@@ -167,6 +173,8 @@ overlay_time_text_path = '/tmp/overlay-time.txt'
 overlay_mute_text_path = '/tmp/overlay-mute.txt'
 overlay_left_penalty_text_path = '/tmp/overlay-left-penalty.txt'
 overlay_right_penalty_text_path = '/tmp/overlay-right-penalty.txt'
+overlay_message_text_path = '/tmp/overlay-message.txt'
+overlay_message_bold_text_path = '/tmp/overlay-message-bold.txt'
 last_overlay_signature = None
 # Overlay sizes in pixels at 1280x720. overlay_layout() scales them to the
 # actual video so the overlay is the same size relative to the frame.
@@ -176,9 +184,17 @@ overlay_base_layout = {
     'team_font': 38,
     'time_font': 44,
     'small_font': 32,
+    'message_font': 44,
+    'message_line_spacing': 10,
+    'message_outline': 3,
 }
 overlay_penalty_filters = {'left': 'drawtext@left_penalty', 'right': 'drawtext@right_penalty'}
 sent_penalty_x_expressions = {}
+# fontfile can't change at runtime, so the message has a regular and a bold
+# drawtext stage and only the selected one gets text. Alignment and background
+# can change, so they are sent over stdin (see message_filter_options).
+overlay_message_filters = ('drawtext@message', 'drawtext@message_bold')
+sent_message_options = {}
 overlay_fonts = {}
 ffmpeg_stdin_lock = threading.Lock()
 
@@ -387,6 +403,7 @@ def current_overlay_text():
     penalty_text = current_penalty_overlay_text()
     phase_text = state['phase']
     time_text = state['time']
+    message_text = state['message_text'] if state['message_show'] else ''
 
     if not phase_has_duration(state['phase']):
         time_text = phase_text
@@ -402,6 +419,8 @@ def current_overlay_text():
         'phase': phase_text,
         'time': time_text,
         'mute': 'MUTED' if state['mute'] else '',
+        'message': message_text if not state['message_bold'] else '',
+        'message_bold': message_text if state['message_bold'] else '',
     }
 
 def format_overlay_clock(value):
@@ -478,6 +497,8 @@ def overlay_signature(overlay_text):
         overlay_text['phase'],
         overlay_text['time'],
         overlay_text['mute'],
+        overlay_text['message'],
+        overlay_text['message_bold'],
     )
 
 def overlay_text_width(text, font_size):
@@ -507,11 +528,31 @@ def sync_penalty_overlay_positions(overlay_text):
         if send_ffmpeg_stdin_command(f'{overlay_penalty_filters[side]} -1 x {expression}'):
             sent_penalty_x_expressions[side] = expression
 
+def message_filter_options(layout):
+    # Without a background the text gets a black outline instead, so it
+    # stays readable over the video.
+    background = state['message_background']
+    return {
+        'text_align': 'center' if state['message_centered'] else 'left',
+        'box': '1' if background else '0',
+        'borderw': str(0 if background else layout['message_outline']),
+    }
+
+def sync_message_options():
+    if not is_ffmpeg_running() or not ffmpeg_ready:
+        return
+    for option, value in message_filter_options(overlay_layout(incoming_video_resolution)).items():
+        if sent_message_options.get(option) == value:
+            continue
+        if all(send_ffmpeg_stdin_command(f'{target} -1 {option} {value}') for target in overlay_message_filters):
+            sent_message_options[option] = value
+
 def write_overlay_text(force=False):
     global last_overlay_signature
     overlay_text = current_overlay_text()
     current_signature = overlay_signature(overlay_text)
     sync_penalty_overlay_positions(overlay_text)
+    sync_message_options()
 
     if not force and current_signature == last_overlay_signature:
         return False
@@ -523,6 +564,8 @@ def write_overlay_text(force=False):
     write_text_file(overlay_phase_text_path, overlay_text['phase'])
     write_text_file(overlay_time_text_path, overlay_text['time'])
     write_text_file(overlay_mute_text_path, overlay_text['mute'])
+    write_text_file(overlay_message_text_path, overlay_text['message'])
+    write_text_file(overlay_message_bold_text_path, overlay_text['message_bold'])
     last_overlay_signature = current_signature
     print("Overlay text updated", flush=True)
     return True
@@ -1212,12 +1255,17 @@ def start_relay_ffmpeg():
         with relay_metrics_lock:
             relay_metrics_session_id = None
 
-def overlay_video_filters(input_label, output_label, penalty_x, layout):
+def overlay_video_filters(input_label, output_label, penalty_x, message_options, layout):
     # The single definition of the overlay. Used for the live stream and for
     # the UI's "Show video" off preview (render_overlay_preview_jpeg), so the
     # two always look identical.
     box = f"box=1:boxcolor=black@0.69:boxborderw={layout['box_border']}"
     margin = layout['margin']
+    # expansion=none so a typed "%" is shown as-is rather than parsed.
+    message = ':'.join(
+        [f"reload=1:expansion=none:fontcolor=white:fontsize={layout['message_font']}:line_spacing={layout['message_line_spacing']}:boxcolor=black@0.69:boxborderw={layout['box_border']}:bordercolor=black:x=(w-tw)/2:y=(h-th)/2"]
+        + [f'{option}={value}' for option, value in message_options.items()]
+    )
     return [
         f"[{input_label}]drawtext=fontfile={primary_font_path}:textfile={overlay_left_text_path}:reload=1:fontcolor=white:fontsize={layout['team_font']}:{box}:x={margin}:y={margin}[v_left]",
         f"[v_left]drawtext=fontfile={primary_font_path}:textfile={overlay_right_text_path}:reload=1:fontcolor=white:fontsize={layout['team_font']}:{box}:x=w-tw-{margin}:y={margin}[v_right]",
@@ -1225,7 +1273,9 @@ def overlay_video_filters(input_label, output_label, penalty_x, layout):
         f"[v_time]drawtext=fontfile={primary_font_path}:textfile={overlay_phase_text_path}:reload=1:fontcolor=white:fontsize={layout['small_font']}:{box}:x={margin}:y=h-th-{margin}[v_phase]",
         f"[v_phase]{overlay_penalty_filters['left']}=fontfile={primary_font_path}:textfile={overlay_left_penalty_text_path}:reload=1:fontcolor=white:fontsize={layout['small_font']}:{box}:x={penalty_x['left']}:y={margin}[v_left_penalty]",
         f"[v_left_penalty]{overlay_penalty_filters['right']}=fontfile={primary_font_path}:textfile={overlay_right_penalty_text_path}:reload=1:fontcolor=white:fontsize={layout['small_font']}:{box}:x={penalty_x['right']}:y={margin}[v_right_penalty]",
-        f"[v_right_penalty]drawtext=fontfile={primary_font_path}:textfile={overlay_mute_text_path}:reload=1:fontcolor=white:fontsize={layout['small_font']}:{box}:x=(w-tw)/2:y=h-th-{margin}[{output_label}]",
+        f"[v_right_penalty]drawtext=fontfile={primary_font_path}:textfile={overlay_mute_text_path}:reload=1:fontcolor=white:fontsize={layout['small_font']}:{box}:x=(w-tw)/2:y=h-th-{margin}[v_mute]",
+        f"[v_mute]{overlay_message_filters[0]}=fontfile={regular_font_path}:textfile={overlay_message_text_path}:{message}[v_message]",
+        f"[v_message]{overlay_message_filters[1]}=fontfile={primary_font_path}:textfile={overlay_message_bold_text_path}:{message}[{output_label}]",
     ]
 
 def render_overlay_preview_jpeg():
@@ -1233,7 +1283,7 @@ def render_overlay_preview_jpeg():
     resolution = incoming_video_resolution or default_video_resolution
     layout = overlay_layout(resolution)
     penalty_x = penalty_x_expressions(current_overlay_text(), layout)
-    filter_complex = ';'.join(overlay_video_filters('0:v', 'v_out', penalty_x, layout))
+    filter_complex = ';'.join(overlay_video_filters('0:v', 'v_out', penalty_x, message_filter_options(layout), layout))
     result = subprocess.run(
         [
             'ffmpeg', '-v', 'error',
@@ -1263,7 +1313,9 @@ def run_ffmpeg():
         write_overlay_text(force=True)
         sent_penalty_x_expressions.clear()
         sent_penalty_x_expressions.update(penalty_x_expressions(current_overlay_text(), layout))
-        filter_complex = ';'.join(overlay_video_filters('0:v', 'v_composited', sent_penalty_x_expressions, layout) + [
+        sent_message_options.clear()
+        sent_message_options.update(message_filter_options(layout))
+        filter_complex = ';'.join(overlay_video_filters('0:v', 'v_composited', sent_penalty_x_expressions, sent_message_options, layout) + [
             '[v_composited]split=2[v_preview][v_webrtc]',
             f'[0:a]{audio_control_target}=volume={current_volume_level()},asplit=2[a_preview][a_webrtc]',
         ])
@@ -1376,6 +1428,8 @@ def apply_overlay_update(data):
         for key in ('left_pp_time', 'right_pp_time'):
             if key in data:
                 data[key] = normalize_clock_value(data[key])
+        if 'message_text' in data:
+            data['message_text'] = str(data['message_text']).replace('\r\n', '\n').replace('\r', '\n').strip()
         if 'clock_mode' in data and data['clock_mode'] not in ('stop_time', 'run_time'):
             data['clock_mode'] = 'stop_time'
         state.update(data)
@@ -1459,7 +1513,7 @@ def update_state():
     data = request.get_json(silent=True) or request.form.to_dict()
     if 'mute' in data and not isinstance(data['mute'], bool):
         data['mute'] = str(data['mute']).lower() in ('1', 'true', 'yes', 'on')
-    for key in ('left_pp', 'left_en', 'right_pp', 'right_en', 'mute_on_stop'):
+    for key in ('left_pp', 'left_en', 'right_pp', 'right_en', 'mute_on_stop', 'message_show', 'message_bold', 'message_centered', 'message_background'):
         if key in data and not isinstance(data[key], bool):
             data[key] = str(data[key]).lower() in ('1', 'true', 'yes', 'on')
     if 'clock_running' in data and not isinstance(data['clock_running'], bool):

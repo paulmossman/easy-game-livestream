@@ -414,7 +414,8 @@
         }
 
         input,
-        select {
+        select,
+        textarea {
             width: 100%;
             border: 1px solid var(--line);
             border-radius: 16px;
@@ -727,6 +728,23 @@
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 16px;
+        }
+
+        textarea {
+            font-family: system-ui, sans-serif;
+            resize: vertical;
+        }
+
+        .message-options {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px 24px;
+        }
+
+        .message-options input[type="checkbox"] {
+            width: 24px;
+            height: 24px;
+            margin: 0;
         }
 
         .clock-controls-grid {
@@ -1155,6 +1173,28 @@
                             Right
                             <input type="text" id="right-team" value="Right">
                         </label>
+                    </div>
+                    <div class="field-block message-controls">
+                        <label class="field-label" for="message-text">Message</label>
+                        <textarea id="message-text" rows="2" placeholder="Text for the middle of the screen"></textarea>
+                        <div class="message-options">
+                            <label class="option-main" for="message-show">
+                                <input type="checkbox" id="message-show">
+                                <span>Show</span>
+                            </label>
+                            <label class="option-main" for="message-bold">
+                                <input type="checkbox" id="message-bold" checked>
+                                <span>Bold</span>
+                            </label>
+                            <label class="option-main" for="message-centered">
+                                <input type="checkbox" id="message-centered" checked>
+                                <span>Centre</span>
+                            </label>
+                            <label class="option-main" for="message-background">
+                                <input type="checkbox" id="message-background" checked>
+                                <span>Background</span>
+                            </label>
+                        </div>
                     </div>
                 </div>
                 <div class="youtube-panel">

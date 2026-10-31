@@ -715,7 +715,12 @@ function currentFormData() {
         clock_mode: selectedClockMode ? selectedClockMode.value : 'stop_time',
         phase: document.getElementById('phase').value,
         time: normalizeClockValue(document.getElementById('time').value),
-        mute_on_stop: document.getElementById('mute-on-stop').checked
+        mute_on_stop: document.getElementById('mute-on-stop').checked,
+        message_text: document.getElementById('message-text').value,
+        message_show: document.getElementById('message-show').checked,
+        message_bold: document.getElementById('message-bold').checked,
+        message_centered: document.getElementById('message-centered').checked,
+        message_background: document.getElementById('message-background').checked
     };
 }
 
@@ -774,6 +779,11 @@ function renderState(state) {
         document.getElementById('phase').value = state.phase;
     }
     syncInputValue('time', state.time);
+    syncInputValue('message-text', state.message_text);
+    document.getElementById('message-show').checked = Boolean(state.message_show);
+    document.getElementById('message-bold').checked = Boolean(state.message_bold);
+    document.getElementById('message-centered').checked = Boolean(state.message_centered);
+    document.getElementById('message-background').checked = Boolean(state.message_background);
     document.getElementById('left-team-heading').textContent = teamHeadingDisplay(
         document.getElementById('left-team').value,
         'Left'
@@ -1233,6 +1243,10 @@ document.getElementById('right-en').addEventListener('change', refreshTeamHeadin
 document.getElementById('phase').addEventListener('change', refreshTeamHeadingsFromInputs);
 document.getElementById('time').addEventListener('input', refreshTeamHeadingsFromInputs);
 document.getElementById('mute-on-stop').addEventListener('change', submitOverlayUpdate);
+document.getElementById('message-text').addEventListener('blur', submitOverlayUpdate);
+['message-show', 'message-bold', 'message-centered', 'message-background'].forEach((id) => {
+    document.getElementById(id).addEventListener('change', submitOverlayUpdate);
+});
 document.getElementById('mute-toggle-button').addEventListener('click', toggleMute);
 document.getElementById('create-stream-button').addEventListener('click', handleCreateStreamClick);
 document.getElementById('left-team').addEventListener('input', refreshTeamHeadingsFromInputs);

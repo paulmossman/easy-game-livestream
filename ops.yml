@@ -1,6 +1,7 @@
 dependencies:
   brew:
     - iproute2mac # iproute/iproute2 on Linux.
+    - ffmpeg
 
 actions:
   start:
@@ -17,3 +18,7 @@ actions:
       - ips
   test:
     command: python3 -m unittest discover -s tests -v
+  sample-stream:
+    command: |-
+      chmod +x ./bin/sample_stream.sh
+      ./bin/sample_stream.sh

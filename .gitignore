@@ -4,3 +4,4 @@ data/*
 !data/.gitkeep
 src/__pycache__
 tests/__pycache__
+sample*.mov

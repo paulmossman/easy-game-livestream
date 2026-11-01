@@ -56,8 +56,7 @@
             grid-template-columns: minmax(240px, 1fr) minmax(320px, 1.15fr) minmax(240px, 1fr);
             grid-template-areas:
                 "toggle toggle toggle"
-                "left preview right"
-                "settings settings settings";
+                "left preview right";
             gap: 20px;
             align-items: start;
         }
@@ -204,10 +203,19 @@
             font-size: 1rem;
         }
 
+        .side-column {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            min-width: 0;
+        }
+
+        .side-column.left,
         .team-panel.left {
             grid-area: left;
         }
 
+        .side-column.right,
         .team-panel.right {
             grid-area: right;
         }
@@ -218,37 +226,32 @@
             display: grid;
             gap: 16px;
             align-content: start;
-            align-self: stretch;
         }
 
         .settings-panel {
             grid-area: settings;
             padding: 24px;
             display: grid;
-            grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
             gap: 16px;
             align-content: start;
+            min-width: 0;
+            container-type: inline-size;
         }
 
-        .settings-left-column {
-            display: grid;
-            gap: 16px;
-            min-width: 0;
+        /* The settings column is narrow in the three-column layout. */
+        @container (max-width: 400px) {
+            .settings-panel .clock-controls-grid {
+                grid-template-columns: 1fr;
+            }
         }
 
         .youtube-panel {
+            grid-area: youtube;
+            padding: 24px;
             display: grid;
             gap: 14px;
-            padding: 18px 20px;
-            border-radius: 20px;
-            background: rgba(31, 26, 23, 0.05);
-        }
-
-        .youtube-status-row {
-            display: grid;
-            grid-template-columns: minmax(220px, 0.8fr) minmax(0, 1.2fr);
-            gap: 20px;
-            align-items: start;
+            align-content: start;
+            min-width: 0;
         }
 
         .youtube-actions {
@@ -307,7 +310,8 @@
         }
 
         .audio-copy > .status-line,
-        .audio-copy > .stream-quality {
+        .audio-copy > .stream-quality,
+        .audio-copy > .relay-metrics {
             grid-column: 1 / -1;
         }
 
@@ -973,7 +977,11 @@
                     "toggle toggle"
                     "left right"
                     "preview preview"
-                    "settings settings";
+                    "settings youtube";
+            }
+
+            .side-column {
+                display: contents;
             }
 
             .toggle-button {
@@ -1022,7 +1030,7 @@
                     "preview"
                     "right"
                     "settings"
-                    ;
+                    "youtube";
             }
 
             .shared-grid,
@@ -1031,15 +1039,7 @@
                 grid-template-columns: 1fr;
             }
 
-            .settings-panel {
-                grid-template-columns: 1fr;
-            }
-
             .clock-controls-grid {
-                grid-template-columns: 1fr;
-            }
-
-            .youtube-status-row {
                 grid-template-columns: 1fr;
             }
         }
@@ -1058,99 +1058,28 @@
                 </div>
             </section>
 
-            <section class="panel team-panel left">
-                <div class="team-top-row">
-                    <div class="team-heading-wrap">
-                        <label class="en-toggle" for="left-en"><span>EN</span><input type="checkbox" id="left-en"></label>
-                        <h2 id="left-team-heading" class="team-heading">Left</h2>
-                    </div>
-                    <input type="text" id="left-score" class="score-input" value="0" inputmode="numeric">
-                    <button type="button" id="left-plus" class="plus-button" aria-label="Increase left score">+</button>
-                </div>
-                <div class="team-flags">
-                    <div class="penalty-controls">
-                        <div class="penalty-section-heading">
-                            <h3>Penalties</h3>
-                            <button type="button" class="penalty-add" data-team="home" aria-label="Add left penalty">+</button>
+            <div class="side-column left">
+                <section class="panel team-panel left">
+                    <div class="team-top-row">
+                        <div class="team-heading-wrap">
+                            <label class="en-toggle" for="left-en"><span>EN</span><input type="checkbox" id="left-en"></label>
+                            <h2 id="left-team-heading" class="team-heading">Left</h2>
                         </div>
-                        <div id="left-penalties" class="penalty-list" aria-live="polite"></div>
+                        <input type="text" id="left-score" class="score-input" value="0" inputmode="numeric">
+                        <button type="button" id="left-plus" class="plus-button" aria-label="Increase left score">+</button>
                     </div>
-                </div>
-            </section>
+                    <div class="team-flags">
+                        <div class="penalty-controls">
+                            <div class="penalty-section-heading">
+                                <h3>Penalties</h3>
+                                <button type="button" class="penalty-add" data-team="home" aria-label="Add left penalty">+</button>
+                            </div>
+                            <div id="left-penalties" class="penalty-list" aria-live="polite"></div>
+                        </div>
+                    </div>
+                </section>
 
-            <section class="panel team-panel right">
-                <div class="team-top-row">
-                    <div class="team-heading-wrap">
-                        <label class="en-toggle" for="right-en"><span>EN</span><input type="checkbox" id="right-en"></label>
-                        <h2 id="right-team-heading" class="team-heading right">Right</h2>
-                    </div>
-                    <input type="text" id="right-score" class="score-input" value="0" inputmode="numeric">
-                    <button type="button" id="right-plus" class="plus-button" aria-label="Increase right score">+</button>
-                </div>
-                <div class="team-flags">
-                    <div class="penalty-controls">
-                        <div class="penalty-section-heading">
-                            <h3>Penalties</h3>
-                            <button type="button" class="penalty-add" data-team="away" aria-label="Add right penalty">+</button>
-                        </div>
-                        <div id="right-penalties" class="penalty-list" aria-live="polite"></div>
-                    </div>
-                </div>
-            </section>
-
-            <section class="panel preview-panel">
-                <div id="preview-audio-warning" class="preview-warning is-hidden">Warning: no audio in incoming stream</div>
-                <div class="preview-stage">
-                    <iframe
-                        id="preview-frame"
-                        class="preview-frame"
-                        data-webrtc-additional-hosts="{{ webrtc_additional_hosts }}"
-                        title="Live preview"
-                        allow="autoplay; fullscreen; picture-in-picture"
-                    ></iframe>
-                    <video
-                        id="preview-video"
-                        class="preview-video is-hidden"
-                        muted
-                        autoplay
-                        playsinline
-                        controls
-                    ></video>
-                    <img id="overlay-mock" class="overlay-mock is-hidden" alt="Overlay preview">
-                </div>
-                <div class="preview-options">
-                    <label class="option-row preview-toggle-row">
-                        <input type="checkbox" id="show-video" {% if start_show_video %}checked{% endif %}>
-                        <span>Show video</span>
-                    </label>
-                    <button type="button" id="preview-advanced-button" class="advanced-button">Advanced ⚙️</button>
-                </div>
-                <dialog id="preview-settings-dialog" class="preview-settings-dialog" aria-labelledby="preview-dialog-title">
-                    <div class="preview-dialog-content">
-                        <div class="preview-dialog-header">
-                            <h2 id="preview-dialog-title">Livestream viewer advanced ⚙️</h2>
-                            <button type="button" id="preview-dialog-close" class="preview-dialog-close" aria-label="Close preview settings">Close</button>
-                        </div>
-                        <label class="preview-host-option" id="preview-host-group" for="preview-host-select">
-                            <span>WebRTC host</span>
-                            <select id="preview-host-select" aria-label="WebRTC host"></select>
-                        </label>
-                        <div class="preview-mode-group" role="radiogroup" aria-label="Preview mode">
-                            <label class="preview-mode-option" for="preview-mode-webrtc">
-                                <input type="radio" id="preview-mode-webrtc" name="preview-mode" value="webrtc" checked>
-                                <span>WebRTC</span>
-                            </label>
-                            <label class="preview-mode-option" for="preview-mode-hls">
-                                <input type="radio" id="preview-mode-hls" name="preview-mode" value="hls">
-                                <span>HLS</span>
-                            </label>
-                        </div>
-                    </div>
-                </dialog>
-            </section>
-
-            <section class="panel settings-panel">
-                <div class="settings-left-column">
+                <section class="panel settings-panel">
                     <div class="clock-controls-grid">
                     <label>
                         Phase
@@ -1227,36 +1156,34 @@
                             <input type="text" id="right-team" value="Right">
                         </label>
                     </div>
-                </div>
-                <div class="youtube-panel">
-                    <div class="youtube-status-row">
-                        <div class="audio-copy">
-                            <div class="audio-label">YouTube</div>
-                            <div id="youtube-status" class="audio-value">Not connected</div>
-                            <a id="youtube-detail" class="status-line" target="_blank" rel="noopener noreferrer">Create a stream when you are ready to go live.</a>
-                            <div id="youtube-stream-health" class="status-line is-hidden"></div>
-                            <table class="stream-quality">
-                                <thead>
-                                    <tr>
-                                        <th scope="col">Quality</th>
-                                        <th scope="col">Resolution</th>
-                                        <th scope="col">FPS</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr>
-                                        <th scope="row">Incoming</th>
-                                        <td id="incoming-resolution">-</td>
-                                        <td id="incoming-fps">-</td>
-                                    </tr>
-                                    <tr>
-                                        <th scope="row">Outgoing</th>
-                                        <td id="outgoing-resolution">-</td>
-                                        <td id="outgoing-fps">-</td>
-                                    </tr>
-                                </tbody>
-                            </table>
+                </section>
+            </div>
+
+            <div class="side-column right">
+                <section class="panel team-panel right">
+                    <div class="team-top-row">
+                        <div class="team-heading-wrap">
+                            <label class="en-toggle" for="right-en"><span>EN</span><input type="checkbox" id="right-en"></label>
+                            <h2 id="right-team-heading" class="team-heading right">Right</h2>
                         </div>
+                        <input type="text" id="right-score" class="score-input" value="0" inputmode="numeric">
+                        <button type="button" id="right-plus" class="plus-button" aria-label="Increase right score">+</button>
+                    </div>
+                    <div class="team-flags">
+                        <div class="penalty-controls">
+                            <div class="penalty-section-heading">
+                                <h3>Penalties</h3>
+                                <button type="button" class="penalty-add" data-team="away" aria-label="Add right penalty">+</button>
+                            </div>
+                            <div id="right-penalties" class="penalty-list" aria-live="polite"></div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="panel youtube-panel">
+                    <div class="audio-copy">
+                        <div class="audio-label">YouTube</div>
+                        <div id="youtube-status" class="audio-value">Not connected</div>
                         <section id="relay-metrics" class="relay-metrics is-hidden" aria-label="YouTube relay metrics">
                             <div class="relay-metrics-chart-wrap">
                                 <canvas id="relay-metrics-chart" role="img" aria-label="Relay output, overall stream health, and speed over the last 15 minutes"></canvas>
@@ -1269,13 +1196,87 @@
                                 </div>
                             </div>
                         </section>
+                        <a id="youtube-detail" class="status-line" target="_blank" rel="noopener noreferrer">Create a stream when you are ready to go live.</a>
+                        <div id="youtube-stream-health" class="status-line is-hidden"></div>
+                        <table class="stream-quality">
+                            <thead>
+                                <tr>
+                                    <th scope="col">Quality</th>
+                                    <th scope="col">Resolution</th>
+                                    <th scope="col">FPS</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <th scope="row">Incoming</th>
+                                    <td id="incoming-resolution">-</td>
+                                    <td id="incoming-fps">-</td>
+                                </tr>
+                                <tr>
+                                    <th scope="row">Outgoing</th>
+                                    <td id="outgoing-resolution">-</td>
+                                    <td id="outgoing-fps">-</td>
+                                </tr>
+                            </tbody>
+                        </table>
                     </div>
                     <div class="youtube-actions">
                         <button type="button" id="create-stream-button" class="youtube-button">Create New Stream</button>
                         <a class="youtube-link" href="/youtube-stop">Stop Stream Page</a>
                     </div>
                     <div id="youtube-channel-list" class="channel-list"></div>
+                </section>
+            </div>
+
+            <section class="panel preview-panel">
+                <div id="preview-audio-warning" class="preview-warning is-hidden">Warning: no audio in incoming stream</div>
+                <div class="preview-stage">
+                    <iframe
+                        id="preview-frame"
+                        class="preview-frame"
+                        data-webrtc-additional-hosts="{{ webrtc_additional_hosts }}"
+                        title="Live preview"
+                        allow="autoplay; fullscreen; picture-in-picture"
+                    ></iframe>
+                    <video
+                        id="preview-video"
+                        class="preview-video is-hidden"
+                        muted
+                        autoplay
+                        playsinline
+                        controls
+                    ></video>
+                    <img id="overlay-mock" class="overlay-mock is-hidden" alt="Overlay preview">
                 </div>
+                <div class="preview-options">
+                    <label class="option-row preview-toggle-row">
+                        <input type="checkbox" id="show-video" {% if start_show_video %}checked{% endif %}>
+                        <span>Show video</span>
+                    </label>
+                    <button type="button" id="preview-advanced-button" class="advanced-button">Advanced ⚙️</button>
+                </div>
+                <dialog id="preview-settings-dialog" class="preview-settings-dialog" aria-labelledby="preview-dialog-title">
+                    <div class="preview-dialog-content">
+                        <div class="preview-dialog-header">
+                            <h2 id="preview-dialog-title">Livestream viewer advanced ⚙️</h2>
+                            <button type="button" id="preview-dialog-close" class="preview-dialog-close" aria-label="Close preview settings">Close</button>
+                        </div>
+                        <label class="preview-host-option" id="preview-host-group" for="preview-host-select">
+                            <span>WebRTC host</span>
+                            <select id="preview-host-select" aria-label="WebRTC host"></select>
+                        </label>
+                        <div class="preview-mode-group" role="radiogroup" aria-label="Preview mode">
+                            <label class="preview-mode-option" for="preview-mode-webrtc">
+                                <input type="radio" id="preview-mode-webrtc" name="preview-mode" value="webrtc" checked>
+                                <span>WebRTC</span>
+                            </label>
+                            <label class="preview-mode-option" for="preview-mode-hls">
+                                <input type="radio" id="preview-mode-hls" name="preview-mode" value="hls">
+                                <span>HLS</span>
+                            </label>
+                        </div>
+                    </div>
+                </dialog>
             </section>
 
         </form>

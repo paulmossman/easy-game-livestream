@@ -981,7 +981,7 @@ def create_youtube_broadcast_for_channel(channel_id, left_team=None, right_team=
     title = youtube_title_for_today(left_team=left_team, right_team=right_team)
     latency = config.get('youtube_latency_preference', 'ultraLow')
     privacy = config.get('youtube_privacy_status', 'public')
-    description = str(config.get('youtube_description') or '')
+    description = str(config.get('gamesheet_url') or '')
 
     stream_response = service.liveStreams().insert(
         part='snippet,cdn,contentDetails,status',
@@ -1513,6 +1513,23 @@ def apply_overlay_update(data):
     socketio.emit('state_updated', updated_state)
     return updated_state
 
+def gamesheet_embed_url():
+    # The game's score sheet page, shown in the UI in an iframe. For a
+    # gamesheetstats.com page, hide its navigation and links unless the URL
+    # already sets them.
+    url = config.get('gamesheet_url') or ''
+    if not url:
+        return ''
+    parts = urllib.parse.urlsplit(url)
+    if not parts.hostname or not parts.hostname.endswith('gamesheetstats.com'):
+        return url
+    query = urllib.parse.parse_qsl(parts.query, keep_blank_values=True)
+    existing_keys = {key for key, _ in query}
+    for key in ('configuration[navigation]', 'configuration[links]'):
+        if key not in existing_keys:
+            query.append((key, 'false'))
+    return urllib.parse.urlunsplit(parts._replace(query=urllib.parse.urlencode(query)))
+
 @app.route('/')
 def index():
     toggle_buffer_ms = config.get('toggle_buffer_ms', 400)
@@ -1522,6 +1539,7 @@ def index():
         webrtc_additional_hosts=os.getenv('MTX_WEBRTCADDITIONALHOSTS', ''),
         toggle_buffer_ms=toggle_buffer_ms,
         start_show_video=start_show_video,
+        gamesheet_url=gamesheet_embed_url(),
         phases=phase_configurations,
         initial_phase=initial_phase_name,
     )

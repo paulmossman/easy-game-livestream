@@ -1273,6 +1273,13 @@ document.getElementById('preview-advanced-button').addEventListener('click', () 
 document.getElementById('preview-dialog-close').addEventListener('click', () => {
     document.getElementById('preview-settings-dialog').close();
 });
+// The GameSheet panel is only rendered when gamesheet_url is configured.
+document.getElementById('gamesheet-reload-button')?.addEventListener('click', (event) => {
+    // The button is inside the <summary>, so don't also open/close the panel.
+    event.preventDefault();
+    const frame = document.getElementById('gamesheet-frame');
+    frame.src = frame.src;
+});
 document.querySelectorAll('input[name="preview-mode"]').forEach((radio) => {
     radio.addEventListener('change', handlePreviewModeChange);
 });

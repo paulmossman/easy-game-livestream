@@ -2,8 +2,6 @@
 
 youtube_privacy_status: public
 
-youtube_description: ''
-
 team_names:
   left: Centaurs
   right: Bears
@@ -11,6 +9,8 @@ team_names:
 toggle_buffer_ms: 400
 
 start_show_video: true
+
+gamesheet_url: ''
 
 phases:
   - name: Warmup

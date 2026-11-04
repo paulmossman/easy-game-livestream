@@ -31,3 +31,9 @@ services:
       - ./config:/app/config:ro
       - ./data:/app/data
     restart: unless-stopped
+
+networks:
+  default:
+    # Let containers reach the internet over IPv6-only links.
+    # (For example: Hotspot to a phone that only has IPv6 cellurlar data connectivity.)
+    enable_ipv6: true

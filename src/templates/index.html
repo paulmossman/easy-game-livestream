@@ -1335,13 +1335,13 @@
                     </dialog>
                 </section>
 
-                {% if gamesheet_url %}
+                {% if scoresheet_url %}
                 <details class="panel gamesheet-panel" open>
                     <summary>GameSheet <button type="button" id="gamesheet-reload-button" class="advanced-button gamesheet-reload-button">Reload</button></summary>
                     <iframe
                         id="gamesheet-frame"
                         class="gamesheet-frame"
-                        src="{{ gamesheet_url }}"
+                        src="{{ scoresheet_url }}"
                         title="GameSheet game"
                         loading="lazy"
                     ></iframe>

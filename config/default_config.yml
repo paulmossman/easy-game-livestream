@@ -10,7 +10,7 @@ toggle_buffer_ms: 400
 
 start_show_video: true
 
-gamesheet_url: ''
+scoresheet_url: ''
 
 # Settings by the team name used in team_names.
 # teams:

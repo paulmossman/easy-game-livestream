@@ -1284,7 +1284,7 @@ document.getElementById('preview-dialog-close').addEventListener('click', () => 
         postState({ [`${side}_celebrate`]: event.target.checked });
     });
 });
-// The GameSheet panel is only rendered when gamesheet_url is configured.
+// The GameSheet panel is only rendered when scoresheet_url is configured.
 document.getElementById('gamesheet-reload-button')?.addEventListener('click', (event) => {
     // The button is inside the <summary>, so don't also open/close the panel.
     event.preventDefault();

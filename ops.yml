@@ -2,6 +2,18 @@ dependencies:
   brew:
     - iproute2mac # iproute/iproute2 on Linux.
     - ffmpeg
+  custom:
+    # Homebrew's Python refuses pip installs (PEP 668), so use a venv.
+    - python3 -m venv .venv
+  pip:
+    - pyyaml
+    # - requests
+    # - google-cloud-firestore
+    # - google-api-python-client
+
+options:
+  pip:
+    command: .venv/bin/python3 -m pip
 
 actions:
   start:
@@ -17,7 +29,9 @@ actions:
     aliases:
       - ips
   test:
-    command: python3 -m unittest discover -s tests -v
+    command: .venv/bin/python3 -m unittest discover -s tests -v
+  scoresheet:
+    command: .venv/bin/python3 -m src.scoresheets
   sample-stream:
     command: |-
       chmod +x ./bin/sample_stream.sh

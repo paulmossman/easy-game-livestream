@@ -803,7 +803,11 @@ function renderState(state) {
             celebrate.checked = Boolean(state[`${side}_celebrate`]);
         }
     });
+    renderScoresheet(state.scoresheet);
     document.getElementById('celebrate-position').value = state.celebrate_position || 'top';
+    document.querySelectorAll('.goal-auto-show').forEach((autoShow) => {
+        autoShow.checked = Boolean(state.goal_auto_show);
+    });
 
     const toggleButton = document.getElementById('start-stop-button');
     const muteOnStop = document.getElementById('mute-on-stop');
@@ -844,6 +848,92 @@ function renderState(state) {
 
     muteToggleButton.textContent = isMuted ? 'Un-mute' : 'Mute';
     muteToggleButton.classList.toggle('is-hidden', Boolean(state.mute_on_stop));
+}
+
+// Matches the overlay caption: until the goal settles, more assists may be
+// on the way, so they end in "...".
+function goalAssistsText(goal) {
+    const assists = !goal.settled && goal.assists.length < 2 ? [...goal.assists, '...'] : goal.assists;
+    return assists.length ? assists.join(', ') : 'unassisted';
+}
+
+// Each team panel's Scoring section lists that team's goals, for sides with
+// Celebrate on. Only rendered when scoresheet_url is configured.
+function renderScoring(scoresheet) {
+    ['left', 'right'].forEach((side) => {
+        const section = document.getElementById(`${side}-scoring`);
+        const list = document.getElementById(`${side}-scoring-list`);
+        if (!section || !list || !scoresheet) {
+            return;
+        }
+        section.hidden = !document.getElementById(`${side}-celebrate`)?.checked;
+        const goals = scoresheet.goals.filter((goal) => goal.side === side);
+        if (!goals.length) {
+            const empty = document.createElement('li');
+            empty.className = 'scoring-empty';
+            empty.textContent = 'No goals yet';
+            list.replaceChildren(empty);
+            return;
+        }
+        list.replaceChildren(...goals.map((goal) => {
+            const row = document.createElement('li');
+            const showing = goal.id === scoresheet.showing;
+            row.className = 'scoring-goal';
+            row.classList.toggle('is-pending', !goal.settled);
+            row.classList.toggle('is-showing', showing);
+            row.title = goal.settled ? '' : 'Still being entered on the scoresheet';
+
+            const meta = document.createElement('span');
+            meta.className = 'scoring-goal-meta';
+            meta.textContent = `P${goal.period} ${goal.clock}`;
+
+            const text = document.createElement('span');
+            text.className = 'scoring-goal-text';
+            text.textContent = [`${goal.scorer} (${goalAssistsText(goal)})`, ...goal.tags].join(' ');
+
+            // Shows this goal's caption, or hides it while it's showing.
+            const toggle = document.createElement('button');
+            toggle.type = 'button';
+            toggle.className = 'advanced-button scoresheet-small-button';
+            toggle.textContent = showing ? 'Hide' : 'Show';
+            toggle.addEventListener('click', () => postScoresheet(showing
+                ? '/api/scoresheet/hide'
+                : `/api/scoresheet/goals/${encodeURIComponent(goal.id)}/show`));
+
+            row.append(meta, text, toggle);
+            return row;
+        }));
+    });
+}
+
+// The scoresheet controls are only rendered when scoresheet_url is configured.
+function renderScoresheet(scoresheet) {
+    renderScoring(scoresheet);
+    const status = document.getElementById('scoresheet-status');
+    if (!status || !scoresheet) {
+        return;
+    }
+    status.classList.toggle('is-error', Boolean(scoresheet.error));
+    if (scoresheet.error) {
+        status.textContent = scoresheet.error;
+    } else if (scoresheet.checked_at) {
+        const checkedAt = new Date(scoresheet.checked_at * 1000).toLocaleTimeString();
+        const prefix = scoresheet.not_started ? 'Game not started yet. ' : scoresheet.game_over ? 'Game over. ' : '';
+        status.textContent = `${prefix}Checked ${checkedAt}`;
+    } else {
+        status.textContent = 'Waiting for the scoresheet';
+    }
+}
+
+async function postScoresheet(url, data) {
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data || {})
+    });
+    if (!response.ok) {
+        console.error('Scoresheet update failed', response.status);
+    }
 }
 
 function renderStreamQuality(quality) {
@@ -1280,6 +1370,12 @@ document.getElementById('preview-advanced-button').addEventListener('click', () 
 document.getElementById('preview-dialog-close').addEventListener('click', () => {
     document.getElementById('preview-settings-dialog').close();
 });
+// Each team's Scoring section has one; they all set the same setting.
+document.querySelectorAll('.goal-auto-show').forEach((autoShow) => {
+    autoShow.addEventListener('change', (event) => {
+        postState({ goal_auto_show: event.target.checked });
+    });
+});
 ['left', 'right'].forEach((side) => {
     document.getElementById(`${side}-celebrate`)?.addEventListener('change', (event) => {
         postState({ [`${side}_celebrate`]: event.target.checked });
@@ -1288,11 +1384,11 @@ document.getElementById('preview-dialog-close').addEventListener('click', () => 
 document.getElementById('celebrate-position').addEventListener('change', (event) => {
     postState({ celebrate_position: event.target.value });
 });
-// The GameSheet panel is only rendered when scoresheet_url is configured.
-document.getElementById('gamesheet-reload-button')?.addEventListener('click', (event) => {
+// The Reload button is only rendered for a game with a web page, not a mock.
+document.getElementById('scoresheet-reload-button')?.addEventListener('click', (event) => {
     // The button is inside the <summary>, so don't also open/close the panel.
     event.preventDefault();
-    const frame = document.getElementById('gamesheet-frame');
+    const frame = document.getElementById('scoresheet-frame');
     frame.src = frame.src;
 });
 document.querySelectorAll('input[name="preview-mode"]').forEach((radio) => {
@@ -1316,6 +1412,7 @@ window.addEventListener('message', (event) => {
 });
 
 socket.on('state_updated', renderState);
+socket.on('scoresheet_updated', renderScoresheet);
 
 window.addEventListener('resize', () => drawRelayMetricsChart(relayMetricSamples));
 initializePreviewPlayer();

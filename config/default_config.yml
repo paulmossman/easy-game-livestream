@@ -10,12 +10,23 @@ toggle_buffer_ms: 400
 
 start_show_video: true
 
+# A gamesheetstats.com game URL, or a mock game file here (see
+# src/scoresheets/mock.py).
 scoresheet_url: ''
+goal_auto_show: true
+goal_overlay_seconds: 10
 
 # Settings by the team name used in team_names.
 # teams:
 #   Testers:
-#     celebrate: true  # Starts the team's Celebrate checkbox checked. Default: false.
+#     celebrate: true  # Starts the team's Celebrate checkbox checked. Default: true if it has a roster.
+#     scoresheet: home  # Optional: home or away on the scoresheet. Default: worked out from the roster.
+#     # The text shown for each jersey number in goal captions. It must
+#     # include the player's scoresheet surname: the roster also tells
+#     # which team on the scoresheet is yours.
+#     roster:
+#       17: MacTestface
+#       4: Fakerson
 
 phases:
   - name: Warmup

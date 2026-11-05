@@ -86,6 +86,57 @@
         .team-flags {
             display: grid;
             grid-template-columns: minmax(0, 1fr);
+            gap: 18px;
+        }
+
+        .scoring-controls {
+            display: grid;
+            gap: 10px;
+        }
+
+        .scoring-controls[hidden] {
+            display: none;
+        }
+
+        .scoring-list {
+            display: grid;
+            gap: 6px;
+            margin: 0;
+            padding: 0;
+            list-style: none;
+        }
+
+        .scoring-goal {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 6px 10px;
+            border: 1px solid var(--line);
+            border-radius: 10px;
+        }
+
+        .scoring-goal.is-showing {
+            border-color: var(--green-a);
+            box-shadow: inset 4px 0 0 var(--green-a);
+        }
+
+        .scoring-goal.is-pending {
+            opacity: 0.5;
+        }
+
+        .scoring-goal-meta {
+            flex: none;
+            font-weight: 800;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .scoring-goal-text {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .scoring-empty {
+            opacity: 0.6;
         }
 
         .team-heading-wrap {
@@ -233,19 +284,49 @@
             align-content: start;
         }
 
-        .gamesheet-panel {
-            grid-area: gamesheet;
+        .scoresheet-panel {
+            grid-area: scoresheet;
             padding: 16px 24px;
         }
 
-        .gamesheet-panel summary {
+        .scoresheet-panel summary {
             font-weight: 800;
             cursor: pointer;
         }
 
-        .gamesheet-reload-button {
+        .scoresheet-reload-button {
             margin-left: 12px;
             padding: 6px 12px;
+        }
+
+        .scoresheet-controls {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 10px 20px;
+            margin-top: 12px;
+        }
+
+        .scoring-auto-show input[type="checkbox"],
+        .celebrate-options input[type="checkbox"] {
+            width: 24px;
+            height: 24px;
+            margin: 0;
+        }
+
+        .scoresheet-small-button {
+            padding: 6px 12px;
+        }
+
+        .scoresheet-status {
+            font-size: 0.9rem;
+            opacity: 0.7;
+        }
+
+        .scoresheet-status.is-error {
+            color: var(--red-b);
+            opacity: 1;
+            font-weight: 700;
         }
 
         .celebrate-options {
@@ -258,13 +339,7 @@
             grid-column: 1 / -1;
         }
 
-        .celebrate-options input[type="checkbox"] {
-            width: 24px;
-            height: 24px;
-            margin: 0;
-        }
-
-        .gamesheet-frame {
+        .scoresheet-frame {
             display: block;
             width: 100%;
             height: 600px;
@@ -1023,7 +1098,7 @@
                     "toggle toggle"
                     "left right"
                     "preview preview"
-                    "gamesheet gamesheet"
+                    "scoresheet scoresheet"
                     "settings youtube";
             }
 
@@ -1076,7 +1151,7 @@
                     "toggle"
                     "left"
                     "preview"
-                    "gamesheet"
+                    "scoresheet"
                     "right"
                     "settings"
                     "youtube";
@@ -1125,6 +1200,18 @@
                             </div>
                             <div id="left-penalties" class="penalty-list" aria-live="polite"></div>
                         </div>
+                        {% if scoresheet_enabled %}
+                        <div id="left-scoring" class="scoring-controls" hidden>
+                            <div class="penalty-section-heading">
+                                <h3>Scoring</h3>
+                                <label class="option-main scoring-auto-show" title="Show each goal's caption once the scorekeeper has finished entering it">
+                                    <input type="checkbox" class="goal-auto-show">
+                                    <span>Auto-show</span>
+                                </label>
+                            </div>
+                            <ol id="left-scoring-list" class="scoring-list" aria-live="polite"></ol>
+                        </div>
+                        {% endif %}
                     </div>
                 </section>
 
@@ -1244,6 +1331,18 @@
                             </div>
                             <div id="right-penalties" class="penalty-list" aria-live="polite"></div>
                         </div>
+                        {% if scoresheet_enabled %}
+                        <div id="right-scoring" class="scoring-controls" hidden>
+                            <div class="penalty-section-heading">
+                                <h3>Scoring</h3>
+                                <label class="option-main scoring-auto-show" title="Show each goal's caption once the scorekeeper has finished entering it">
+                                    <input type="checkbox" class="goal-auto-show">
+                                    <span>Auto-show</span>
+                                </label>
+                            </div>
+                            <ol id="right-scoring-list" class="scoring-list" aria-live="polite"></ol>
+                        </div>
+                        {% endif %}
                     </div>
                 </section>
 
@@ -1347,22 +1446,27 @@
                     </dialog>
                 </section>
 
-                {% if scoresheet_url %}
-                <details class="panel gamesheet-panel" open>
-                    <summary>GameSheet <button type="button" id="gamesheet-reload-button" class="advanced-button gamesheet-reload-button">Reload</button></summary>
+                {% if scoresheet_enabled %}
+                <details class="panel scoresheet-panel" open>
+                    <summary>Scoresheet{% if scoresheet_url %} <button type="button" id="scoresheet-reload-button" class="advanced-button scoresheet-reload-button">Reload</button>{% endif %}</summary>
+                    <div class="scoresheet-controls">
+                        <span id="scoresheet-status" class="scoresheet-status" aria-live="polite"></span>
+                    </div>
+                    {% if scoresheet_url %}
                     <iframe
-                        id="gamesheet-frame"
-                        class="gamesheet-frame"
+                        id="scoresheet-frame"
+                        class="scoresheet-frame"
                         src="{{ scoresheet_url }}"
-                        title="GameSheet game"
+                        title="Scoresheet"
                         loading="lazy"
                     ></iframe>
+                    {% endif %}
                 </details>
                 {% endif %}
             </div>
 
         </form>
     </div>
-    <script src="/static/js/app.js?v=20261104a"></script>
+    <script src="/static/js/app.js?v=20261110b"></script>
 </body>
 </html>

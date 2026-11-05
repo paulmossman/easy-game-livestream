@@ -123,3 +123,5 @@ If you use the optional Web UI `Create New Stream` flow, you can also set `youtu
 ## Configuration File
 
 - `gamesheet_url`: the game's page on gamesheetstats.com, e.g. `https://gamesheetstats.com/seasons/15453/games/3117894`. It's shown in a GameSheet panel under the video preview (with GameSheet's navigation and links hidden), and used as the description of YouTube broadcasts made with the Web UI `Create New Stream` flow. Empty by default, which hides the panel and leaves the description empty.
+- `teams`: settings by team name (as in `team_names`), usually just for your own team:
+  - `celebrate`: the starting value of the Celebrate checkbox under each team name, for the team names the app starts with. Default `false`. After that the checkboxes decide, and renaming a team doesn't change its checkbox. The checkboxes don't do anything yet.

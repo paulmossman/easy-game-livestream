@@ -112,6 +112,15 @@ state = {
     'message_centered': True,
     'message_background': True,
 }
+
+def team_celebrates_at_startup(team_name):
+    team_settings = (config.get('teams') or {}).get(team_name) or {}
+    return bool(team_settings.get('celebrate', False))
+
+# Each side's Celebrate checkbox starts from the config for its startup team
+# name, then is only changed in the UI, not by renaming the team.
+state['left_celebrate'] = team_celebrates_at_startup(state['left_team'])
+state['right_celebrate'] = team_celebrates_at_startup(state['right_team'])
 penalty_game = PenaltyStateMachine()
 ffmpeg_process = None
 relay_ffmpeg_process = None
@@ -1566,7 +1575,7 @@ def update_state():
     data = request.get_json(silent=True) or request.form.to_dict()
     if 'mute' in data and not isinstance(data['mute'], bool):
         data['mute'] = str(data['mute']).lower() in ('1', 'true', 'yes', 'on')
-    for key in ('left_pp', 'left_en', 'right_pp', 'right_en', 'mute_on_stop', 'message_show', 'message_bold', 'message_centered', 'message_background'):
+    for key in ('left_pp', 'left_en', 'right_pp', 'right_en', 'mute_on_stop', 'message_show', 'message_bold', 'message_centered', 'message_background', 'left_celebrate', 'right_celebrate'):
         if key in data and not isinstance(data[key], bool):
             data[key] = str(data[key]).lower() in ('1', 'true', 'yes', 'on')
     if 'clock_running' in data and not isinstance(data['clock_running'], bool):

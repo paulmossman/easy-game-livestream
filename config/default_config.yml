@@ -12,6 +12,11 @@ start_show_video: true
 
 gamesheet_url: ''
 
+# Settings by the team name used in team_names.
+# teams:
+#   Testers:
+#     celebrate: true  # Starts the team's Celebrate checkbox checked. Default: false.
+
 phases:
   - name: Warmup
     duration: '0:02'

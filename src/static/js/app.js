@@ -797,6 +797,12 @@ function renderState(state) {
     );
     refreshOverlayPreview();
     renderStreamQuality(state.stream_quality || {});
+    ['left', 'right'].forEach((side) => {
+        const celebrate = document.getElementById(`${side}-celebrate`);
+        if (celebrate) {
+            celebrate.checked = Boolean(state[`${side}_celebrate`]);
+        }
+    });
 
     const toggleButton = document.getElementById('start-stop-button');
     const muteOnStop = document.getElementById('mute-on-stop');
@@ -1272,6 +1278,11 @@ document.getElementById('preview-advanced-button').addEventListener('click', () 
 });
 document.getElementById('preview-dialog-close').addEventListener('click', () => {
     document.getElementById('preview-settings-dialog').close();
+});
+['left', 'right'].forEach((side) => {
+    document.getElementById(`${side}-celebrate`)?.addEventListener('change', (event) => {
+        postState({ [`${side}_celebrate`]: event.target.checked });
+    });
 });
 // The GameSheet panel is only rendered when gamesheet_url is configured.
 document.getElementById('gamesheet-reload-button')?.addEventListener('click', (event) => {

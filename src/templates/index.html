@@ -248,6 +248,18 @@
             padding: 6px 12px;
         }
 
+        .celebrate-options {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+
+        .celebrate-options input[type="checkbox"] {
+            width: 24px;
+            height: 24px;
+            margin: 0;
+        }
+
         .gamesheet-frame {
             display: block;
             width: 100%;
@@ -1189,6 +1201,16 @@
                             <input type="text" id="right-team" value="Right">
                         </label>
                     </div>
+                    <div class="celebrate-options">
+                        <label class="option-main" for="left-celebrate" title="Show a caption for this team's goals">
+                            <input type="checkbox" id="left-celebrate">
+                            <span>Celebrate</span>
+                        </label>
+                        <label class="option-main" for="right-celebrate" title="Show a caption for this team's goals">
+                            <input type="checkbox" id="right-celebrate">
+                            <span>Celebrate</span>
+                        </label>
+                    </div>
                 </section>
             </div>
 
@@ -1329,6 +1351,6 @@
 
         </form>
     </div>
-    <script src="/static/js/app.js?v=20261101a"></script>
+    <script src="/static/js/app.js?v=20261104a"></script>
 </body>
 </html>

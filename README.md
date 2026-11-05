@@ -108,6 +108,7 @@ Before clicking `Go live` in YouTube Studio, verify:
 - Accepts RTMP stream from iPhone
 - Adds dynamic text overlay with score, game phase, and time
 - Mutes/un-mutes audio
+- Celebrates goals added with the `+` button for teams with Celebrate on: shows `<Team Name> Goal!` on the overlay for a few seconds, and plays `config/celebrate.m4a` (if present) into the program audio, even while muted. The file is read at each goal, so it can be added or replaced at any time. Clips are limited to about 59 seconds
 - Web interface for real-time control
 - Forwards to YouTube livestream
 - Local browser preview through MediaMTX, including low-latency WebRTC audio

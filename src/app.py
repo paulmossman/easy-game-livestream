@@ -4,6 +4,7 @@ import json
 import re
 import sqlite3
 import threading
+import wave
 import time
 import tempfile
 import uuid
@@ -145,6 +146,30 @@ overlay_preview_background = '0x1b262d'
 mediamtx_api_url = config.get('mediamtx_api_url', 'http://mediamtx:9997/v3/paths/list')
 last_stream_ready_state = None
 audio_control_target = 'volume@audio_gain'
+# A goal for a team with Celebrate on plays this file into the program audio.
+# It's looked for at each goal, so it can be added or changed at any time.
+celebrate_audio_path = '/app/config/celebrate.m4a'
+# FFmpeg can't open a new source while running, so its audio graph always reads
+# this buffer, and each goal decodes the file into it.
+celebrate_audio_buffer_path = '/tmp/celebrate-audio.wav'
+celebrate_audio_buffer_seconds = 60
+celebrate_audio_rate = 48000
+celebrate_audio_channels = 2
+celebrate_audio_sample_bytes = 2
+celebrate_audio_bytes_per_second = celebrate_audio_rate * celebrate_audio_channels * celebrate_audio_sample_bytes
+# Silence around the clip, so the time taken by the stdin commands that turn
+# the audio up and down doesn't cut it.
+celebrate_audio_lead_seconds = 0.2
+celebrate_audio_tail_seconds = 0.5
+celebrate_audio_source = 'amovie@celebrate_audio'
+celebrate_audio_gain = 'volume@celebrate_gain'
+celebrate_audio_lock = threading.Lock()
+celebrate_audio_buffer_data_offset = 0
+celebrate_text_seconds = 12
+celebrate_text = ''
+# Bumped by each celebration, so a newer one keeps its text and audio when an
+# older one's timers run out.
+celebrate_generation = 0
 state_lock = threading.Lock()
 incoming_audio_monitor_interval_seconds = float(config.get('incoming_audio_monitor_interval_seconds', 15.0))
 volume_pattern = re.compile(r'max_volume:\s*(-?\d+(?:\.\d+)?)\s*dB')
@@ -189,6 +214,7 @@ overlay_left_penalty_text_path = '/tmp/overlay-left-penalty.txt'
 overlay_right_penalty_text_path = '/tmp/overlay-right-penalty.txt'
 overlay_message_text_path = '/tmp/overlay-message.txt'
 overlay_message_bold_text_path = '/tmp/overlay-message-bold.txt'
+overlay_celebrate_text_path = '/tmp/overlay-celebrate.txt'
 last_overlay_signature = None
 # Overlay sizes in pixels at 1280x720. overlay_layout() scales them to the
 # actual video so the overlay is the same size relative to the frame.
@@ -450,6 +476,7 @@ def current_overlay_text():
         'phase': phase_text,
         'time': time_text,
         'mute': 'MUTED' if state['mute'] else '',
+        'celebrate': celebrate_text,
         'message': message_text if not state['message_bold'] else '',
         'message_bold': message_text if state['message_bold'] else '',
     }
@@ -523,6 +550,7 @@ def overlay_signature(overlay_text):
     return (
         overlay_text['left'],
         overlay_text['right'],
+        overlay_text['celebrate'],
         overlay_text['left_penalty'],
         overlay_text['right_penalty'],
         overlay_text['phase'],
@@ -595,6 +623,7 @@ def write_overlay_text(force=False):
     write_text_file(overlay_phase_text_path, overlay_text['phase'])
     write_text_file(overlay_time_text_path, overlay_text['time'])
     write_text_file(overlay_mute_text_path, overlay_text['mute'])
+    write_text_file(overlay_celebrate_text_path, overlay_text['celebrate'])
     write_text_file(overlay_message_text_path, overlay_text['message'])
     write_text_file(overlay_message_bold_text_path, overlay_text['message_bold'])
     last_overlay_signature = current_signature
@@ -685,6 +714,91 @@ def adjust_pp_times(seconds_delta):
 
 def current_volume_level():
     return muted_volume_level if state['mute'] else normal_volume_level
+
+def silent_audio(seconds):
+    return bytes(int(seconds * celebrate_audio_bytes_per_second))
+
+def create_celebrate_audio_buffer():
+    global celebrate_audio_buffer_data_offset
+    with wave.open(celebrate_audio_buffer_path, 'wb') as buffer:
+        buffer.setnchannels(celebrate_audio_channels)
+        buffer.setsampwidth(celebrate_audio_sample_bytes)
+        buffer.setframerate(celebrate_audio_rate)
+        buffer.writeframes(silent_audio(celebrate_audio_buffer_seconds))
+    data_bytes = int(celebrate_audio_buffer_seconds * celebrate_audio_bytes_per_second)
+    celebrate_audio_buffer_data_offset = os.path.getsize(celebrate_audio_buffer_path) - data_bytes
+
+def load_celebrate_audio():
+    # Decodes the file into the buffer FFmpeg is reading, in place so that
+    # FFmpeg sees it. Returns the seconds to play, or None if there's no audio.
+    if not os.path.isfile(celebrate_audio_path):
+        print(f"No celebrate audio at {celebrate_audio_path}", flush=True)
+        return None
+    longest_clip = celebrate_audio_buffer_seconds - celebrate_audio_lead_seconds - celebrate_audio_tail_seconds
+    try:
+        result = subprocess.run(
+            ['ffmpeg', '-nostdin', '-v', 'error', '-i', celebrate_audio_path,
+             '-t', str(longest_clip), '-f', 's16le',
+             '-ar', str(celebrate_audio_rate), '-ac', str(celebrate_audio_channels), 'pipe:1'],
+            capture_output=True,
+            timeout=10,
+        )
+        if result.returncode != 0 or not result.stdout:
+            print(f"Could not decode {celebrate_audio_path}: {result.stderr[-300:]!r}", flush=True)
+            return None
+        audio = silent_audio(celebrate_audio_lead_seconds) + result.stdout + silent_audio(celebrate_audio_tail_seconds)
+        with open(celebrate_audio_buffer_path, 'r+b') as buffer:
+            buffer.seek(celebrate_audio_buffer_data_offset)
+            # The whole buffer, so nothing of a longer previous clip is left.
+            buffer.write(audio.ljust(len(silent_audio(celebrate_audio_buffer_seconds)), b'\0'))
+    except (subprocess.SubprocessError, OSError) as e:
+        print(f"Could not load {celebrate_audio_path}: {e}", flush=True)
+        return None
+    return len(audio) / celebrate_audio_bytes_per_second
+
+def program_audio_filters():
+    # The celebrate audio is mixed in after the mute stage, so it plays even
+    # while the game audio is muted. The buffer loops here, silenced, until
+    # play_celebrate_audio() rewinds it and turns it up.
+    audio_format = f'aformat=sample_rates={celebrate_audio_rate}:channel_layouts=stereo'
+    return [
+        f'[0:a]{audio_control_target}=volume={current_volume_level()},{audio_format}[a_game]',
+        f'{celebrate_audio_source}=filename={celebrate_audio_buffer_path}:loop=0,{audio_format},{celebrate_audio_gain}=volume=0[a_celebrate]',
+        '[a_game][a_celebrate]amix=inputs=2:duration=first:normalize=0,asplit=2[a_program][a_webrtc]',
+    ]
+
+def play_celebrate_audio(generation):
+    if not is_ffmpeg_running():
+        return
+    with celebrate_audio_lock:
+        duration = load_celebrate_audio()
+        if duration is None:
+            return
+        send_ffmpeg_stdin_command(f'{celebrate_audio_source} -1 seek 0|0|1')
+        send_ffmpeg_stdin_command(f'{celebrate_audio_gain} -1 volume 1.0')
+    time.sleep(duration)
+    if generation == celebrate_generation:
+        send_ffmpeg_stdin_command(f'{celebrate_audio_gain} -1 volume 0')
+
+def clear_celebrate_text(generation):
+    global celebrate_text
+    with state_lock:
+        if generation != celebrate_generation:
+            return
+        celebrate_text = ''
+    write_overlay_text()
+
+def celebrate_goal(team_name):
+    global celebrate_text, celebrate_generation
+    with state_lock:
+        celebrate_generation += 1
+        generation = celebrate_generation
+        celebrate_text = f'{team_name} Goal!'
+    write_overlay_text()
+    threading.Thread(target=play_celebrate_audio, args=(generation,), daemon=True).start()
+    timer = threading.Timer(celebrate_text_seconds, clear_celebrate_text, args=(generation,))
+    timer.daemon = True
+    timer.start()
 
 def send_ffmpeg_stdin_command(command):
     if not is_ffmpeg_running() or ffmpeg_process.stdin is None:
@@ -1304,6 +1418,7 @@ def overlay_video_filters(input_label, output_label, penalty_x, message_options,
     # two always look identical.
     box = f"box=1:boxcolor=black@0.69:boxborderw={layout['box_border']}"
     margin = layout['margin']
+    celebrate_y = margin + layout['time_font'] + 3 * layout['box_border']
     # expansion=none so a typed "%" is shown as-is rather than parsed.
     message = ':'.join(
         [f"reload=1:expansion=none:fontcolor=white:fontsize={layout['message_font']}:line_spacing={layout['message_line_spacing']}:boxcolor=black@0.69:boxborderw={layout['box_border']}:bordercolor=black:x=(w-tw)/2:y=(h-th)/2"]
@@ -1317,7 +1432,8 @@ def overlay_video_filters(input_label, output_label, penalty_x, message_options,
         f"[v_phase]{overlay_penalty_filters['left']}=fontfile={primary_font_path}:textfile={overlay_left_penalty_text_path}:reload=1:fontcolor=white:fontsize={layout['small_font']}:{box}:x={penalty_x['left']}:y={margin}[v_left_penalty]",
         f"[v_left_penalty]{overlay_penalty_filters['right']}=fontfile={primary_font_path}:textfile={overlay_right_penalty_text_path}:reload=1:fontcolor=white:fontsize={layout['small_font']}:{box}:x={penalty_x['right']}:y={margin}[v_right_penalty]",
         f"[v_right_penalty]drawtext=fontfile={primary_font_path}:textfile={overlay_mute_text_path}:reload=1:fontcolor=white:fontsize={layout['small_font']}:{box}:x=(w-tw)/2:y=h-th-{margin}[v_mute]",
-        f"[v_mute]{overlay_message_filters[0]}=fontfile={regular_font_path}:textfile={overlay_message_text_path}:{message}[v_message]",
+        f"[v_mute]drawtext=fontfile={primary_font_path}:textfile={overlay_celebrate_text_path}:reload=1:expansion=none:fontcolor=white:fontsize={layout['time_font']}:{box}:x=(w-tw)/2:y={celebrate_y}[v_celebrate]",
+        f"[v_celebrate]{overlay_message_filters[0]}=fontfile={regular_font_path}:textfile={overlay_message_text_path}:{message}[v_message]",
         f"[v_message]{overlay_message_filters[1]}=fontfile={primary_font_path}:textfile={overlay_message_bold_text_path}:{message}[{output_label}]",
     ]
 
@@ -1358,12 +1474,17 @@ def run_ffmpeg():
         sent_penalty_x_expressions.update(penalty_x_expressions(current_overlay_text(), layout))
         sent_message_options.clear()
         sent_message_options.update(message_filter_options(layout))
+        create_celebrate_audio_buffer()
         filter_complex = ';'.join(overlay_video_filters('0:v', 'v_composited', sent_penalty_x_expressions, sent_message_options, layout) + [
             '[v_composited]split=2[v_program][v_webrtc]',
-            f'[0:a]{audio_control_target}=volume={current_volume_level()},asplit=2[a_program][a_webrtc]',
-        ])
+        ] + program_audio_filters())
         cmd = [
             'ffmpeg',
+            # FFmpeg only reads stdin commands once per stats period (default
+            # 0.5s), which is too slow for the rewind and turn-up of
+            # play_celebrate_audio to land together.
+            '-nostats',
+            '-stats_period', '0.05',
             '-rtmp_live', 'live',
             '-i', input_url,
             '-filter_complex', filter_complex,
@@ -1637,7 +1758,11 @@ def record_goal(team):
         score_key = 'left_score' if scoring_team is Team.HOME else 'right_score'
         state[score_key] = str(int(normalize_score_value(state[score_key])) + 1)
         penalty_game.record_goal(scoring_team)
+        side = 'left' if scoring_team is Team.HOME else 'right'
+        celebrating_team = (state[f'{side}_team'] or side.capitalize()) if state[f'{side}_celebrate'] else None
         updated_state = current_state_payload()
+    if celebrating_team:
+        celebrate_goal(celebrating_team)
     write_overlay_text()
     socketio.emit('state_updated', updated_state)
     return jsonify(updated_state)

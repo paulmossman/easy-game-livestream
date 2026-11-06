@@ -137,3 +137,17 @@ If you use the optional Web UI `Create New Stream` flow, you can also set `youtu
   - `scoresheet`: `home` or `away`, which team the scoresheet lists this team as. Optional: without it, the rosters work it out. Set it when the roster doesn't match the game's players, or the team has no roster. Once one team's side is known, the other side is the other overlay team. Goals only go in a team panel's Scoring section, and are only celebrated, once the team's side is known.
   - `celebrate`: whether the team's goals get captions automatically. Default `true` if the team has a roster, else `false`. It sets the starting value of the Celebrate checkbox under each team name, for the team names the app starts with. After that the checkboxes decide, and renaming a team doesn't change its checkbox. Goals are only celebrated once the rosters show which team scored them, so an opponent's goal isn't celebrated while both team names are still the same.
 - `celebrate_position`: the starting value of the Caption drop-down under the Celebrate checkboxes, which sets where the "<Team name> Goal!" text and the goal caption (which replaces it) are shown: `top` (just under the top row), `middle`, or `bottom` (just over the bottom row). Default `top`.
+- `youtube_max_bitrate`: the most video bitrate the stream sent to YouTube may use, e.g. `3000k` or `2.5M`. See the table under `youtube_max_resolution` for what suits each resolution; on a slow upload, use about two thirds of a measured speed test. Restart the app (`docker compose restart app`) after changing it. Unset by default, which leaves the bitrate uncapped.
+- `youtube_max_resolution`: the highest resolution sent to YouTube, from the table below. The stream matches the incoming resolution unless that is higher, in which case it's scaled down, keeping its aspect ratio. Any other value is ignored. The local WebRTC preview isn't scaled. `Create New Stream` declares this to YouTube if it's below `720p`. Restart the app (`docker compose restart app`) after changing it. Default `2160p`.
+
+  When you change it, change `youtube_max_bitrate` to match, because that isn't adjusted for you. Too low a bitrate for the resolution looks blocky, especially with fast motion. Values are [YouTube's H.264 figures](https://support.google.com/youtube/answer/2853702) for 30 fps:
+
+  | Resolution | Recommended Bitrate | Minimum Bitrate |
+  | --- | --- | --- |
+  | `240p` | `700k` | `300k` |
+  | `360p` | `4000k` | `400k` |
+  | `480p` | `4000k` | `400k` |
+  | `720p` | `8000k` | `3000k` |
+  | `1080p` | `14000k` | `5000k` |
+  | `1440p` | `21000k` | `7000k` |
+  | `2160p` | `42000k` | `11000k` |

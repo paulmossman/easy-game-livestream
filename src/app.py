@@ -197,9 +197,20 @@ runtime_youtube_destination = {
     'stream_key': None,
     'ingestion_address': None,
 }
+youtube_resolutions = ('240p', '360p', '480p', '720p', '1080p', '1440p', '2160p')
+
+def configured_youtube_max_height():
+    value = config.get('youtube_max_resolution')
+    if value in youtube_resolutions:
+        return int(value[:-1])
+    if value is not None:
+        print(f"Ignoring invalid youtube_max_resolution: {value!r}", flush=True)
+    return 2160
+
+youtube_max_height = configured_youtube_max_height()
 # What "Create New Stream" declares to YouTube. The relay copies the video
 # as-is, so this isn't necessarily what is actually sent.
-youtube_stream_resolution = '720p'
+youtube_stream_resolution = f'{min(720, youtube_max_height)}p'
 youtube_stream_frame_rate = '30fps'
 inactive_youtube_broadcast_statuses = {'complete', 'deleted'}
 deletable_youtube_broadcast_statuses = {'created', 'ready'}
@@ -284,12 +295,13 @@ def format_frame_rate(rate):
         return None
     return f'{int(match.group(1)) / int(match.group(2)):.2f}'.rstrip('0').rstrip('.')
 
-def resolution_label(resolution):
+def resolution_label(resolution, max_height=None):
     # "1280x720" -> "720p". Uses the shorter side, so a portrait stream
     # (720x1280) is also "720p".
     if not resolution:
         return None
-    return f"{min(int(value) for value in resolution.split('x'))}p"
+    height = min(int(value) for value in resolution.split('x'))
+    return f'{min(height, max_height) if max_height else height}p'
 
 def probe_video_format(url):
     # Returns (resolution, frame rate), or (None, None) if the probe fails.
@@ -587,6 +599,27 @@ def sync_penalty_overlay_positions(overlay_text):
         if send_ffmpeg_stdin_command(f'{overlay_penalty_filters[side]} -1 x {expression}'):
             sent_penalty_x_expressions[side] = expression
 
+def program_video_rate_options():
+    # Caps the program feed, which the relay copies to YouTube. Without a cap
+    # x264 aims for quality, and busy pictures spike the bitrate. A buffer of
+    # one second's worth keeps it near the cap even over short spans.
+    max_bitrate = str(config.get('youtube_max_bitrate') or '').strip()
+    if not max_bitrate:
+        return []
+    # FFmpeg reads a lowercase m as milli, so only K and M are allowed.
+    if not re.fullmatch(r'[0-9]+(\.[0-9]+)?[kKM]?', max_bitrate):
+        print(f"Ignoring invalid youtube_max_bitrate: {max_bitrate!r}", flush=True)
+        return []
+    return ['-maxrate', max_bitrate, '-bufsize', max_bitrate]
+
+def program_scale_filter(input_label, output_label):
+    # Caps the shorter side of the program feed, like resolution_label, and
+    # keeps the aspect ratio. Scaling after the overlay keeps it the same size
+    # relative to the frame. -2 keeps the other side even, as x264 requires.
+    width = f"if(lt(iw,ih),min(iw,{youtube_max_height}),-2)"
+    height = f"if(lt(iw,ih),-2,min(ih,{youtube_max_height}))"
+    return f"[{input_label}]scale=w='{width}':h='{height}'[{output_label}]"
+
 def message_filter_options(layout):
     # Without a background the text gets a black outline instead, so it
     # stays readable over the video.
@@ -654,7 +687,7 @@ def current_state_payload():
     payload['stream_quality'] = {
         'incoming': {'resolution': resolution_label(incoming_video_resolution), 'fps': incoming_video_frame_rate},
         'outgoing': {
-            'resolution': youtube_stream_resolution if relay_running else None,
+            'resolution': resolution_label(incoming_video_resolution, youtube_max_height) if relay_running else None,
             'fps': youtube_stream_frame_rate.replace('fps', '') if relay_running else None,
         },
     }
@@ -1476,7 +1509,8 @@ def run_ffmpeg():
         sent_message_options.update(message_filter_options(layout))
         create_celebrate_audio_buffer()
         filter_complex = ';'.join(overlay_video_filters('0:v', 'v_composited', sent_penalty_x_expressions, sent_message_options, layout) + [
-            '[v_composited]split=2[v_program][v_webrtc]',
+            '[v_composited]split=2[v_program_full][v_webrtc]',
+            program_scale_filter('v_program_full', 'v_program'),
         ] + program_audio_filters())
         cmd = [
             'ffmpeg',
@@ -1498,6 +1532,7 @@ def run_ffmpeg():
             '-keyint_min', '30',
             '-sc_threshold', '0',
             '-bf', '0',
+            *program_video_rate_options(),
             '-c:a', 'aac',
             '-b:a', '128k',
             '-f', 'flv',

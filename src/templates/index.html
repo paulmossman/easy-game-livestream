@@ -254,6 +254,10 @@
             gap: 16px;
         }
 
+        .celebrate-position {
+            grid-column: 1 / -1;
+        }
+
         .celebrate-options input[type="checkbox"] {
             width: 24px;
             height: 24px;
@@ -1209,6 +1213,14 @@
                         <label class="option-main" for="right-celebrate" title="Show a caption for this team's goals">
                             <input type="checkbox" id="right-celebrate">
                             <span>Celebrate</span>
+                        </label>
+                        <label class="celebrate-position" title="Where the goal caption is shown">
+                            Caption
+                            <select id="celebrate-position">
+                                <option value="top">Top</option>
+                                <option value="middle">Middle</option>
+                                <option value="bottom">Bottom</option>
+                            </select>
                         </label>
                     </div>
                 </section>

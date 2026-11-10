@@ -803,6 +803,7 @@ function renderState(state) {
             celebrate.checked = Boolean(state[`${side}_celebrate`]);
         }
     });
+    document.getElementById('celebrate-position').value = state.celebrate_position || 'top';
 
     const toggleButton = document.getElementById('start-stop-button');
     const muteOnStop = document.getElementById('mute-on-stop');
@@ -1283,6 +1284,9 @@ document.getElementById('preview-dialog-close').addEventListener('click', () => 
     document.getElementById(`${side}-celebrate`)?.addEventListener('change', (event) => {
         postState({ [`${side}_celebrate`]: event.target.checked });
     });
+});
+document.getElementById('celebrate-position').addEventListener('change', (event) => {
+    postState({ celebrate_position: event.target.value });
 });
 // The GameSheet panel is only rendered when scoresheet_url is configured.
 document.getElementById('gamesheet-reload-button')?.addEventListener('click', (event) => {

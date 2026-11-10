@@ -122,6 +122,10 @@ def team_celebrates_at_startup(team_name):
 # name, then is only changed in the UI, not by renaming the team.
 state['left_celebrate'] = team_celebrates_at_startup(state['left_team'])
 state['right_celebrate'] = team_celebrates_at_startup(state['right_team'])
+celebrate_positions = ('top', 'middle', 'bottom')
+state['celebrate_position'] = str(config.get('celebrate_position') or 'top').lower()
+if state['celebrate_position'] not in celebrate_positions:
+    state['celebrate_position'] = 'top'
 penalty_game = PenaltyStateMachine()
 ffmpeg_process = None
 relay_ffmpeg_process = None
@@ -235,6 +239,8 @@ sent_penalty_x_expressions = {}
 # can change, so they are sent over stdin (see message_filter_options).
 overlay_message_filters = ('drawtext@message', 'drawtext@message_bold')
 sent_message_options = {}
+overlay_celebrate_filter = 'drawtext@celebrate'
+sent_celebrate_y = None
 overlay_fonts = {}
 ffmpeg_stdin_lock = threading.Lock()
 
@@ -606,12 +612,33 @@ def sync_message_options():
         if all(send_ffmpeg_stdin_command(f'{target} -1 {option} {value}') for target in overlay_message_filters):
             sent_message_options[option] = value
 
+def celebrate_y_expression(layout):
+    # Top sits just under the top row and Bottom just over the bottom row;
+    # Middle shares the centre with the message.
+    position = state['celebrate_position']
+    if position == 'middle':
+        return '(h-th)/2'
+    if position == 'bottom':
+        return f"h-th-{layout['margin'] + layout['small_font'] + 3 * layout['box_border']}"
+    return str(layout['margin'] + layout['time_font'] + 3 * layout['box_border'])
+
+def sync_celebrate_position():
+    global sent_celebrate_y
+    if not is_ffmpeg_running() or not ffmpeg_ready:
+        return
+    expression = celebrate_y_expression(overlay_layout(incoming_video_resolution))
+    if sent_celebrate_y == expression:
+        return
+    if send_ffmpeg_stdin_command(f'{overlay_celebrate_filter} -1 y {expression}'):
+        sent_celebrate_y = expression
+
 def write_overlay_text(force=False):
     global last_overlay_signature
     overlay_text = current_overlay_text()
     current_signature = overlay_signature(overlay_text)
     sync_penalty_overlay_positions(overlay_text)
     sync_message_options()
+    sync_celebrate_position()
 
     if not force and current_signature == last_overlay_signature:
         return False
@@ -1412,13 +1439,12 @@ def start_relay_ffmpeg():
         with relay_metrics_lock:
             relay_metrics_session_id = None
 
-def overlay_video_filters(input_label, output_label, penalty_x, message_options, layout):
+def overlay_video_filters(input_label, output_label, penalty_x, message_options, celebrate_y, layout):
     # The single definition of the overlay. Used for the live stream and for
     # the UI's "Show video" off preview (render_overlay_preview_jpeg), so the
     # two always look identical.
     box = f"box=1:boxcolor=black@0.69:boxborderw={layout['box_border']}"
     margin = layout['margin']
-    celebrate_y = margin + layout['time_font'] + 3 * layout['box_border']
     # expansion=none so a typed "%" is shown as-is rather than parsed.
     message = ':'.join(
         [f"reload=1:expansion=none:fontcolor=white:fontsize={layout['message_font']}:line_spacing={layout['message_line_spacing']}:boxcolor=black@0.69:boxborderw={layout['box_border']}:bordercolor=black:x=(w-tw)/2:y=(h-th)/2"]
@@ -1432,7 +1458,7 @@ def overlay_video_filters(input_label, output_label, penalty_x, message_options,
         f"[v_phase]{overlay_penalty_filters['left']}=fontfile={primary_font_path}:textfile={overlay_left_penalty_text_path}:reload=1:fontcolor=white:fontsize={layout['small_font']}:{box}:x={penalty_x['left']}:y={margin}[v_left_penalty]",
         f"[v_left_penalty]{overlay_penalty_filters['right']}=fontfile={primary_font_path}:textfile={overlay_right_penalty_text_path}:reload=1:fontcolor=white:fontsize={layout['small_font']}:{box}:x={penalty_x['right']}:y={margin}[v_right_penalty]",
         f"[v_right_penalty]drawtext=fontfile={primary_font_path}:textfile={overlay_mute_text_path}:reload=1:fontcolor=white:fontsize={layout['small_font']}:{box}:x=(w-tw)/2:y=h-th-{margin}[v_mute]",
-        f"[v_mute]drawtext=fontfile={primary_font_path}:textfile={overlay_celebrate_text_path}:reload=1:expansion=none:fontcolor=white:fontsize={layout['time_font']}:{box}:x=(w-tw)/2:y={celebrate_y}[v_celebrate]",
+        f"[v_mute]{overlay_celebrate_filter}=fontfile={primary_font_path}:textfile={overlay_celebrate_text_path}:reload=1:expansion=none:fontcolor=white:fontsize={layout['time_font']}:{box}:x=(w-tw)/2:y={celebrate_y}[v_celebrate]",
         f"[v_celebrate]{overlay_message_filters[0]}=fontfile={regular_font_path}:textfile={overlay_message_text_path}:{message}[v_message]",
         f"[v_message]{overlay_message_filters[1]}=fontfile={primary_font_path}:textfile={overlay_message_bold_text_path}:{message}[{output_label}]",
     ]
@@ -1442,7 +1468,7 @@ def render_overlay_preview_jpeg():
     resolution = incoming_video_resolution or default_video_resolution
     layout = overlay_layout(resolution)
     penalty_x = penalty_x_expressions(current_overlay_text(), layout)
-    filter_complex = ';'.join(overlay_video_filters('0:v', 'v_out', penalty_x, message_filter_options(layout), layout))
+    filter_complex = ';'.join(overlay_video_filters('0:v', 'v_out', penalty_x, message_filter_options(layout), celebrate_y_expression(layout), layout))
     result = subprocess.run(
         [
             'ffmpeg', '-v', 'error',
@@ -1459,7 +1485,7 @@ def render_overlay_preview_jpeg():
     return result.stdout
 
 def run_ffmpeg():
-    global ffmpeg_process, ffmpeg_ready
+    global ffmpeg_process, ffmpeg_ready, sent_celebrate_y
     input_url = current_input_url()
     program_output_url = current_program_output_url()
     webrtc_output_url = current_webrtc_preview_output_url()
@@ -1474,8 +1500,9 @@ def run_ffmpeg():
         sent_penalty_x_expressions.update(penalty_x_expressions(current_overlay_text(), layout))
         sent_message_options.clear()
         sent_message_options.update(message_filter_options(layout))
+        sent_celebrate_y = celebrate_y_expression(layout)
         create_celebrate_audio_buffer()
-        filter_complex = ';'.join(overlay_video_filters('0:v', 'v_composited', sent_penalty_x_expressions, sent_message_options, layout) + [
+        filter_complex = ';'.join(overlay_video_filters('0:v', 'v_composited', sent_penalty_x_expressions, sent_message_options, sent_celebrate_y, layout) + [
             '[v_composited]split=2[v_program][v_webrtc]',
         ] + program_audio_filters())
         cmd = [
@@ -1595,6 +1622,8 @@ def apply_overlay_update(data):
                 data[key] = normalize_clock_value(data[key])
         if 'message_text' in data:
             data['message_text'] = str(data['message_text']).replace('\r\n', '\n').replace('\r', '\n').strip()
+        if 'celebrate_position' in data and data['celebrate_position'] not in celebrate_positions:
+            data.pop('celebrate_position')
         if 'clock_mode' in data and data['clock_mode'] not in ('stop_time', 'run_time'):
             data['clock_mode'] = 'stop_time'
         state.update(data)

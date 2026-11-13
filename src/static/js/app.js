@@ -857,8 +857,8 @@ function goalAssistsText(goal) {
     return assists.length ? assists.join(', ') : 'unassisted';
 }
 
-// Each team panel's Scoring section lists that team's goals, for sides with
-// Celebrate on. Only rendered when scoresheet_url is configured.
+// Each team panel's Scoring section lists that team's goals, from the
+// scoresheet and entered by hand, for sides with Celebrate on.
 function renderScoring(scoresheet) {
     ['left', 'right'].forEach((side) => {
         const section = document.getElementById(`${side}-scoring`);
@@ -881,7 +881,8 @@ function renderScoring(scoresheet) {
             row.className = 'scoring-goal';
             row.classList.toggle('is-pending', !goal.settled);
             row.classList.toggle('is-showing', showing);
-            row.title = goal.settled ? '' : 'Still being entered on the scoresheet';
+            row.classList.toggle('is-manual', Boolean(goal.manual));
+            row.title = goal.manual ? 'Entered by hand' : goal.settled ? '' : 'Still being entered on the scoresheet';
 
             const meta = document.createElement('span');
             meta.className = 'scoring-goal-meta';
@@ -900,10 +901,101 @@ function renderScoring(scoresheet) {
                 ? '/api/scoresheet/hide'
                 : `/api/scoresheet/goals/${encodeURIComponent(goal.id)}/show`));
 
-            row.append(meta, text, toggle);
+            const actions = document.createElement('span');
+            actions.className = 'scoring-goal-actions';
+            actions.append(toggle);
+            // Goals entered by hand can be changed; scoresheet goals are
+            // corrected on the scoresheet.
+            if (goal.manual) {
+                const edit = document.createElement('button');
+                edit.type = 'button';
+                edit.className = 'advanced-button scoresheet-small-button';
+                edit.textContent = 'Edit';
+                edit.addEventListener('click', () => openGoalEntry(side, goal));
+                actions.append(edit);
+            }
+
+            row.append(meta, text, actions);
             return row;
         }));
     });
+}
+
+// The goal-entry dialog, for entering a goal by hand when the scoresheet
+// isn't being updated, or changing one entered by hand. Opened from a team's
+// Scoring section; `goal` is the goal being edited, or undefined for a new one.
+let goalEntryTarget = null;
+
+function openGoalEntry(side, goal) {
+    const scoresheet = latestState.scoresheet || {};
+    const values = goal ? goal.entry : ((scoresheet.entry_defaults || {})[side] || {});
+    const teamName = document.getElementById(`${side}-team`).value.trim() || (side === 'left' ? 'Left' : 'Right');
+    goalEntryTarget = { side, goalId: goal ? goal.id : null };
+    document.getElementById('goal-entry-title').textContent = `${teamName} goal`;
+    document.getElementById('goal-entry-period').value = values.period || 1;
+    document.getElementById('goal-entry-clock').value = values.clock || '';
+    document.getElementById('goal-entry-scorer').value = values.scorer || '';
+    const assists = values.assists || [];
+    document.getElementById('goal-entry-assist-1').value = assists[0] || '';
+    document.getElementById('goal-entry-assist-2').value = assists[1] || '';
+    document.getElementById('goal-entry-strength').value = values.strength || 'even';
+    document.getElementById('goal-entry-empty-net').checked = Boolean(values.empty_net);
+    document.getElementById('goal-entry-delete').hidden = !goal;
+    document.getElementById('goal-entry-error').textContent = '';
+    // Typing a number offers the matching roster player.
+    const roster = (scoresheet.rosters || {})[side] || [];
+    document.getElementById('goal-entry-roster').replaceChildren(...roster.map((player) => {
+        const option = document.createElement('option');
+        option.value = `${player.jersey} ${player.name}`;
+        return option;
+    }));
+    const dialog = document.getElementById('goal-entry-dialog');
+    dialog.showModal();
+    document.getElementById('goal-entry-scorer').focus();
+}
+
+async function sendGoalEntry(method, url, data) {
+    const response = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: data ? JSON.stringify(data) : undefined
+    });
+    if (response.ok) {
+        document.getElementById('goal-entry-dialog').close();
+        return;
+    }
+    const body = await response.json().catch(() => ({}));
+    document.getElementById('goal-entry-error').textContent = body.error || `Not saved (${response.status})`;
+}
+
+async function saveGoalEntry(event) {
+    event.preventDefault();
+    if (!goalEntryTarget) {
+        return;
+    }
+    const data = {
+        side: goalEntryTarget.side,
+        period: document.getElementById('goal-entry-period').value,
+        clock: document.getElementById('goal-entry-clock').value.trim(),
+        scorer: document.getElementById('goal-entry-scorer').value.trim(),
+        assists: ['goal-entry-assist-1', 'goal-entry-assist-2']
+            .map((id) => document.getElementById(id).value.trim())
+            .filter(Boolean),
+        strength: document.getElementById('goal-entry-strength').value,
+        empty_net: document.getElementById('goal-entry-empty-net').checked
+    };
+    if (goalEntryTarget.goalId) {
+        await sendGoalEntry('PUT', `/api/scoresheet/manual-goals/${encodeURIComponent(goalEntryTarget.goalId)}`, data);
+    } else {
+        await sendGoalEntry('POST', '/api/scoresheet/manual-goals', data);
+    }
+}
+
+async function deleteGoalEntry() {
+    if (!goalEntryTarget || !goalEntryTarget.goalId || !window.confirm('Delete this goal?')) {
+        return;
+    }
+    await sendGoalEntry('DELETE', `/api/scoresheet/manual-goals/${encodeURIComponent(goalEntryTarget.goalId)}`);
 }
 
 // The scoresheet controls are only rendered when scoresheet_url is configured.
@@ -1201,6 +1293,9 @@ function canHandleGlobalKeypress(event) {
 }
 
 function canHandlePrimaryAction() {
+    if (document.getElementById('goal-entry-dialog').open) {
+        return false;
+    }
     const activeTag = document.activeElement ? document.activeElement.tagName : '';
     const isEditable = activeTag === 'INPUT' || activeTag === 'TEXTAREA' || activeTag === 'SELECT';
     if (isEditable) {
@@ -1308,7 +1403,8 @@ function handleTabFocus(event) {
     }
 
     const target = event.target;
-    if (!target.matches('input[type="checkbox"], input[type="text"], textarea')) {
+    // In a dialog, Tab moves between its fields as usual.
+    if (!target.matches('input[type="checkbox"], input[type="text"], textarea') || target.closest('dialog')) {
         return;
     }
 
@@ -1369,6 +1465,14 @@ document.getElementById('preview-advanced-button').addEventListener('click', () 
 });
 document.getElementById('preview-dialog-close').addEventListener('click', () => {
     document.getElementById('preview-settings-dialog').close();
+});
+document.querySelectorAll('.scoring-add').forEach((button) => {
+    button.addEventListener('click', () => openGoalEntry(button.dataset.side));
+});
+document.getElementById('goal-entry-form').addEventListener('submit', saveGoalEntry);
+document.getElementById('goal-entry-delete').addEventListener('click', deleteGoalEntry);
+document.getElementById('goal-entry-close').addEventListener('click', () => {
+    document.getElementById('goal-entry-dialog').close();
 });
 // Each team's Scoring section has one; they all set the same setting.
 document.querySelectorAll('.goal-auto-show').forEach((autoShow) => {

@@ -38,6 +38,13 @@ def _jersey_key(jersey) -> str:
     return str(jersey).strip().lstrip('0') or '0'
 
 
+def _roster_items(roster):
+    # A mapping ({17: MacTestface}), or a list of them (- 17: MacTestface).
+    if isinstance(roster, list):
+        return [item for entry in roster if isinstance(entry, dict) for item in entry.items()]
+    return list((roster or {}).items())
+
+
 class Teams:
     """The ``teams`` config: each team's roster ({jersey: display text}),
     Celebrate, and scoresheet side."""
@@ -52,9 +59,9 @@ class Teams:
             side = SCORESHEET_SIDES.get(str(settings.get('scoresheet') or '').strip().lower())
             if side:
                 self._sides[side] = str(name)
-            roster = settings.get('roster') or {}
             self._rosters[str(name)] = {
-                _jersey_key(jersey): str(surname) for jersey, surname in roster.items() if surname
+                _jersey_key(jersey): str(surname) for jersey, surname in _roster_items(settings.get('roster'))
+                if surname
             }
             if 'celebrate' in settings:
                 self._celebrate[str(name)] = bool(settings['celebrate'])
@@ -64,6 +71,10 @@ class Teams:
         if team_name in self._celebrate:
             return self._celebrate[team_name]
         return bool(self._rosters.get(team_name))
+
+    def roster(self, team_name: str) -> Dict[str, str]:
+        """The team's roster: {jersey number: display text}."""
+        return dict(self._rosters.get(team_name, {}))
 
     def roster_match(self, player) -> Optional[Tuple[str, str]]:
         """Returns (team name, roster text) for a player on a roster.
@@ -86,13 +97,18 @@ class Teams:
 
         Looks the number up in the scoring team's roster (``team_name``),
         else falls back to a roster match on number and surname. A player on
-        no roster gets their capitalised scoresheet name: "Testy Mactestface".
+        no roster gets their scoresheet name, capitalised if it's in capitals:
+        "Testy Mactestface". A player with only a number (entered by hand)
+        is "#17".
         """
         text = self._rosters.get(team_name or '', {}).get(_jersey_key(player.jersey)) if player.jersey else None
         if not text:
             match = self.roster_match(player)
             text = match[1] if match else ' '.join(
-                capitalize_name(part) for part in (player.first_name, player.last_name) if part)
+                capitalize_name(part) if part.isupper() else part
+                for part in (player.first_name, player.last_name) if part)
+        if not text and player.jersey:
+            text = f'#{player.jersey}'
         return text
 
     def side_teams(self, goals, left_team: str, right_team: str) -> Dict[str, Optional[str]]:

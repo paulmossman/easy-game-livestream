@@ -24,7 +24,7 @@ from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from penalties import PenaltyStateMachine, PenaltyType, Team
-from scoresheets import GameNotStarted, GoalChangeKind, ScoresheetError, is_mock_game, open_feed
+from scoresheets import GameNotStarted, GoalChangeKind, ManualGoals, ScoresheetError, is_mock_game, open_feed, player_text
 from goal_captions import Teams
 
 # Load config
@@ -151,6 +151,15 @@ scoresheet = {
     # Poll every scoresheet_new_goal_poll_seconds until then (monotonic).
     'fast_poll_until': 0.0,
 }
+# Goals entered in the UI, for when the scoresheet isn't being updated (an
+# arena with no WiFi). Listed and captioned like scoresheet goals; a
+# scoresheet goal that turns up later replaces its manual goal. Guarded by
+# state_lock. Holds players' names too, so don't save or log it.
+manual_goals = ManualGoals()
+# The goal-entry form's defaults for each side (period, time, strength, EN),
+# taken when its score "+" is pressed, as the penalty and EN state change
+# right after. None means use the current game state.
+manual_goal_defaults = {'left': None, 'right': None}
 ffmpeg_process = None
 relay_ffmpeg_process = None
 relay_metrics_session_id = None
@@ -520,6 +529,8 @@ def current_overlay_text():
     }
 
 def scoresheet_team_name(goal, side_teams):
+    if is_manual_goal(goal):
+        return goal.team_name
     return side_teams.get(goal.team) or goal.team.capitalize()
 
 def current_goal_caption():
@@ -527,10 +538,19 @@ def current_goal_caption():
     if goal is None:
         return ''
     side_teams = scoresheet_side_teams()
-    return goal_teams.caption(goal, scoresheet_team_name(goal, side_teams), settled=goal.id in scoresheet['settled'])
+    return goal_teams.caption(goal, scoresheet_team_name(goal, side_teams), settled=goal_is_settled(goal.id))
 
 def scoresheet_goal(goal_id):
-    return next((goal for goal in scoresheet['goals'] if goal.id == goal_id), None)
+    # A scoresheet goal or a manual one.
+    manual = manual_goals.get(goal_id) if goal_id is not None else None
+    return manual or next((goal for goal in scoresheet['goals'] if goal.id == goal_id), None)
+
+def is_manual_goal(goal):
+    return manual_goals.get(goal.id) is goal
+
+def goal_is_settled(goal_id):
+    # A manual goal is finished as soon as it's entered.
+    return goal_id in scoresheet['settled'] or manual_goals.get(goal_id) is not None
 
 def format_overlay_clock(value):
     total_seconds = parse_clock(value)
@@ -1642,43 +1662,113 @@ def monitor_stream():
 def scoresheet_side_teams():
     return goal_teams.side_teams(scoresheet['goals'], state['left_team'], state['right_team'])
 
+def overlay_team_name(side):
+    # The name a goal entered on this side is recorded under, as in
+    # record_goal.
+    return state[f'{side}_team'] or side.capitalize()
+
+def goal_team(goal, side_teams):
+    # The scoring team's name: a manual goal's own, or the scoresheet side's
+    # team, which is None until the rosters show which team it is.
+    return goal.team_name if is_manual_goal(goal) else side_teams.get(goal.team)
+
 def goal_celebrates(goal, side_teams):
     # A goal is celebrated only once its side's team is known from the
     # rosters, so an opponent's goal isn't celebrated by mistake while both
     # overlay teams still have the same name.
     # When both overlay sides have that name, either side's Celebrate will do.
-    team_name = side_teams.get(goal.team)
-    return bool(team_name) and any(
-        state[f'{side}_celebrate'] for side in ('left', 'right') if state[f'{side}_team'] == team_name)
+    return scoring_side(goal, side_teams) is not None
 
 def scoring_side(goal, side_teams):
     # The overlay side ('left' or 'right') whose team panel lists the goal in
     # its Scoring section: the side with the scoring team's name and Celebrate
     # on. None until the rosters show which team scored it. When both sides
     # have that name, the left one.
-    team_name = side_teams.get(goal.team)
+    team_name = goal_team(goal, side_teams)
     if not team_name:
         return None
     for side in ('left', 'right'):
-        if state[f'{side}_team'] == team_name and state[f'{side}_celebrate']:
+        if overlay_team_name(side) == team_name and state[f'{side}_celebrate']:
             return side
     return None
+
+manual_strength_values = {'even': 'even', 'power_play': 'pp', 'shorthanded': 'shg'}
+
+def manual_goal_entry(goal):
+    # The goal as the entry form's fields, for editing it.
+    return {
+        'period': goal.period,
+        'clock': goal.clock,
+        'scorer': player_text(goal.scorer),
+        'assists': [player_text(assist) for assist in goal.assists],
+        'strength': manual_strength_values[goal.strength.value],
+        'empty_net': goal.empty_net,
+    }
+
+def phase_period(phase_name):
+    # The period number for a goal entered during a phase: the number in its
+    # name ("Period 2"), else the period it follows (a Flood after Period 2
+    # is 2), or the next one for a timed phase such as OT.
+    match = re.search(r'\d+', phase_name or '')
+    if match:
+        return int(match.group(0))
+    period = 0
+    for phase in phase_configurations:
+        if phase['name'] == phase_name:
+            break
+        match = re.search(r'\d+', phase['name'])
+        if match:
+            period = int(match.group(0))
+    return max(1, period + 1 if phase_has_duration(phase_name) else period)
+
+def goal_entry_defaults(side):
+    team = Team.HOME if side == 'left' else Team.AWAY
+    opponent = Team.AWAY if team is Team.HOME else Team.HOME
+    skaters = penalty_game.skaters_for(team)
+    opponent_skaters = penalty_game.skaters_for(opponent)
+    timed = phase_has_duration(state['phase'])
+    return {
+        'period': phase_period(state['phase']),
+        'clock': format_overlay_clock(state['time']) if timed else '00:00',
+        'strength': 'pp' if skaters > opponent_skaters else 'shg' if skaters < opponent_skaters else 'even',
+        # The other side pulled its goalie.
+        'empty_net': bool(state['right_en' if side == 'left' else 'left_en']),
+    }
+
+def goal_order(goal):
+    return goal.period, -(parse_clock(goal.clock) or 0)
 
 def current_scoresheet_payload():
     side_teams = scoresheet_side_teams()
     goals = []
-    for goal in scoresheet['goals']:
-        goals.append(dict(
-            goal_teams.describe(goal, side_teams.get(goal.team)),
+    for goal in sorted(scoresheet['goals'] + manual_goals.goals, key=goal_order):
+        manual = is_manual_goal(goal)
+        entry = dict(
+            goal_teams.describe(goal, goal_team(goal, side_teams)),
             id=goal.id,
             period=goal.period,
             clock=goal.clock,
-            settled=goal.id in scoresheet['settled'],
+            settled=goal_is_settled(goal.id),
             side=scoring_side(goal, side_teams),
-        ))
+            manual=manual,
+        )
+        if manual:
+            entry['entry'] = manual_goal_entry(goal)
+        goals.append(entry)
+    rosters = {}
+    entry_defaults = {}
+    for side in ('left', 'right'):
+        roster = goal_teams.roster(overlay_team_name(side))
+        rosters[side] = [
+            {'jersey': jersey, 'name': name}
+            for jersey, name in sorted(roster.items(), key=lambda item: (not item[0].isdigit(), int(item[0]) if item[0].isdigit() else 0, item[0]))
+        ]
+        entry_defaults[side] = manual_goal_defaults[side] or goal_entry_defaults(side)
     return {
         'enabled': bool(scoresheet_source()),
         'goals': goals,
+        'rosters': rosters,
+        'entry_defaults': entry_defaults,
         'game_over': scoresheet['game_over'],
         'error': scoresheet['error'],
         'not_started': scoresheet['not_started'],
@@ -1697,7 +1787,7 @@ def advance_goal_caption():
     # A goal still being entered stays up until it settles and its time is
     # up. Returns whether the caption changed.
     showing = scoresheet['showing']
-    if (showing is not None and showing in scoresheet['settled']
+    if (showing is not None and goal_is_settled(showing)
             and time.monotonic() >= scoresheet['showing_until']):
         scoresheet['showing'] = None
     if scoresheet['showing'] is None and scoresheet['queue']:
@@ -1738,6 +1828,8 @@ def poll_scoresheet(feed):
                     if scoresheet['showing'] == goal.id:
                         scoresheet['showing'] = None
                     continue
+                if change.kind in (GoalChangeKind.ADDED, GoalChangeKind.UPDATED):
+                    replace_manual_goal(goal, side_teams)
                 # Goals on the scoresheet when the app starts are already
                 # settled; only new ones are shown and sped up for.
                 new_goal = not feed.is_settled(goal.id)
@@ -1760,6 +1852,19 @@ def poll_scoresheet(feed):
     if error and changed:
         print(f"Scoresheet poll failed: {error}", flush=True)
     return changed
+
+def replace_manual_goal(goal, side_teams):
+    # The scoresheet has caught up with a goal entered by hand: list the
+    # scoresheet's goal instead, and don't show its caption again.
+    team_name = side_teams.get(goal.team)
+    replaced = manual_goals.take_match(team_name, goal) if team_name else None
+    if replaced is None:
+        return
+    print(f"Scoresheet goal {goal.id} replaces manual goal {replaced.id}", flush=True)
+    scoresheet['auto_shown'].add(goal.id)
+    scoresheet['queue'] = [goal.id if queued == replaced.id else queued for queued in scoresheet['queue']]
+    if scoresheet['showing'] == replaced.id:
+        scoresheet['showing'] = goal.id
 
 def monitor_scoresheet():
     try:
@@ -2011,8 +2116,9 @@ def record_goal(team):
     with state_lock:
         score_key = 'left_score' if scoring_team is Team.HOME else 'right_score'
         state[score_key] = str(int(normalize_score_value(state[score_key])) + 1)
-        penalty_game.record_goal(scoring_team)
         side = 'left' if scoring_team is Team.HOME else 'right'
+        manual_goal_defaults[side] = goal_entry_defaults(side)
+        penalty_game.record_goal(scoring_team)
         celebrating_team = (state[f'{side}_team'] or side.capitalize()) if state[f'{side}_celebrate'] else None
         # The goal should reach the scoresheet soon, so check it often.
         scoresheet['fast_poll_until'] = time.monotonic() + scoresheet_new_goal_fast_seconds
@@ -2029,6 +2135,61 @@ def show_scoresheet_goal(goal_id):
         if scoresheet_goal(goal_id) is None:
             return jsonify({'error': 'no such goal'}), 404
         show_goal_caption(goal_id)
+        updated_state = current_state_payload()
+    write_overlay_text()
+    socketio.emit('state_updated', updated_state)
+    return jsonify(updated_state)
+
+@app.route('/api/scoresheet/manual-goals', methods=['POST'])
+def add_manual_goal():
+    data = request.get_json(silent=True) or {}
+    side = data.get('side')
+    if side not in ('left', 'right'):
+        return jsonify({'error': 'side must be left or right'}), 400
+    with state_lock:
+        try:
+            goal = manual_goals.add(overlay_team_name(side), data)
+        except ValueError as e:
+            return jsonify({'error': str(e)}), 400
+        # The next goal's defaults come from its own "+" press, or the clock.
+        manual_goal_defaults[side] = None
+        print(f"Manual goal added: {goal.id} P{goal.period} {goal.clock} {side}", flush=True)
+        if state['goal_auto_show'] and goal_celebrates(goal, scoresheet_side_teams()):
+            scoresheet['auto_shown'].add(goal.id)
+            scoresheet['queue'].append(goal.id)
+            advance_goal_caption()
+        updated_state = current_state_payload()
+    write_overlay_text()
+    socketio.emit('state_updated', updated_state)
+    return jsonify(updated_state)
+
+@app.route('/api/scoresheet/manual-goals/<goal_id>', methods=['PUT'])
+def update_manual_goal(goal_id):
+    data = request.get_json(silent=True) or {}
+    with state_lock:
+        if manual_goals.get(goal_id) is None:
+            return jsonify({'error': 'no such goal'}), 404
+        try:
+            manual_goals.update(goal_id, data)
+        except ValueError as e:
+            return jsonify({'error': str(e)}), 400
+        print(f"Manual goal updated: {goal_id}", flush=True)
+        updated_state = current_state_payload()
+    write_overlay_text()
+    socketio.emit('state_updated', updated_state)
+    return jsonify(updated_state)
+
+@app.route('/api/scoresheet/manual-goals/<goal_id>', methods=['DELETE'])
+def delete_manual_goal(goal_id):
+    with state_lock:
+        if manual_goals.remove(goal_id) is None:
+            return jsonify({'error': 'no such goal'}), 404
+        print(f"Manual goal deleted: {goal_id}", flush=True)
+        if goal_id in scoresheet['queue']:
+            scoresheet['queue'].remove(goal_id)
+        if scoresheet['showing'] == goal_id:
+            scoresheet['showing'] = None
+            advance_goal_caption()
         updated_state = current_state_payload()
     write_overlay_text()
     socketio.emit('state_updated', updated_state)

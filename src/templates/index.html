@@ -139,6 +139,63 @@
             opacity: 0.6;
         }
 
+        .scoring-goal.is-manual .scoring-goal-meta::after {
+            content: " ✎";
+            opacity: 0.6;
+        }
+
+        .scoring-goal-actions {
+            display: flex;
+            flex: none;
+            gap: 6px;
+        }
+
+        .goal-entry-form {
+            display: grid;
+            gap: 14px;
+        }
+
+        .goal-entry-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        .goal-entry-form input,
+        .goal-entry-form select {
+            padding: 10px 12px;
+            font-size: 1rem;
+            border-radius: 10px;
+        }
+
+        .goal-entry-form input[type="checkbox"] {
+            width: 24px;
+            height: 24px;
+            margin: 0;
+        }
+
+        .goal-entry-error {
+            margin: 0;
+            color: var(--red-b);
+            font-weight: 700;
+        }
+
+        .goal-entry-error:empty {
+            display: none;
+        }
+
+        .goal-entry-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+
+        .goal-entry-actions .goal-entry-save {
+            border-color: var(--green-b);
+            color: white;
+            background: var(--green-b);
+        }
+
         .team-heading-wrap {
             display: flex;
             min-width: 0;
@@ -175,7 +232,8 @@
             font-size: 1rem;
         }
 
-        .penalty-add {
+        .penalty-add,
+        .scoring-add {
             width: 72px;
             min-height: 40px;
             border: 0;
@@ -1200,10 +1258,10 @@
                             </div>
                             <div id="left-penalties" class="penalty-list" aria-live="polite"></div>
                         </div>
-                        {% if scoresheet_enabled %}
                         <div id="left-scoring" class="scoring-controls" hidden>
                             <div class="penalty-section-heading">
                                 <h3>Scoring</h3>
+                                <button type="button" class="scoring-add" data-side="left" aria-label="Enter a left goal" title="Enter a goal by hand, when the scoresheet isn't being updated">+</button>
                                 <label class="option-main scoring-auto-show" title="Show each goal's caption once the scorekeeper has finished entering it">
                                     <input type="checkbox" class="goal-auto-show">
                                     <span>Auto-show</span>
@@ -1211,7 +1269,6 @@
                             </div>
                             <ol id="left-scoring-list" class="scoring-list" aria-live="polite"></ol>
                         </div>
-                        {% endif %}
                     </div>
                 </section>
 
@@ -1331,10 +1388,10 @@
                             </div>
                             <div id="right-penalties" class="penalty-list" aria-live="polite"></div>
                         </div>
-                        {% if scoresheet_enabled %}
                         <div id="right-scoring" class="scoring-controls" hidden>
                             <div class="penalty-section-heading">
                                 <h3>Scoring</h3>
+                                <button type="button" class="scoring-add" data-side="right" aria-label="Enter a right goal" title="Enter a goal by hand, when the scoresheet isn't being updated">+</button>
                                 <label class="option-main scoring-auto-show" title="Show each goal's caption once the scorekeeper has finished entering it">
                                     <input type="checkbox" class="goal-auto-show">
                                     <span>Auto-show</span>
@@ -1342,7 +1399,6 @@
                             </div>
                             <ol id="right-scoring-list" class="scoring-list" aria-live="polite"></ol>
                         </div>
-                        {% endif %}
                     </div>
                 </section>
 
@@ -1466,7 +1522,60 @@
             </div>
 
         </form>
+        <!-- Outside the overlay form: forms can't be nested. -->
+        <dialog id="goal-entry-dialog" class="preview-settings-dialog" aria-labelledby="goal-entry-title">
+            <form id="goal-entry-form" class="goal-entry-form" method="dialog">
+                <div class="preview-dialog-header">
+                    <h2 id="goal-entry-title">Goal</h2>
+                    <button type="button" id="goal-entry-close" class="preview-dialog-close" aria-label="Close without saving">Close</button>
+                </div>
+                <div class="goal-entry-row">
+                    <label>
+                        Period
+                        <input type="number" id="goal-entry-period" min="1" step="1" required>
+                    </label>
+                    <label>
+                        Time left
+                        <input type="text" id="goal-entry-clock" placeholder="MM:SS" pattern="\d{1,2}:[0-5]\d" required>
+                    </label>
+                </div>
+                <label>
+                    Scorer
+                    <input type="text" id="goal-entry-scorer" list="goal-entry-roster" placeholder="Number, or number and name" autocomplete="off" required>
+                </label>
+                <div class="goal-entry-row">
+                    <label>
+                        Assist
+                        <input type="text" id="goal-entry-assist-1" list="goal-entry-roster" autocomplete="off">
+                    </label>
+                    <label>
+                        Assist
+                        <input type="text" id="goal-entry-assist-2" list="goal-entry-roster" autocomplete="off">
+                    </label>
+                </div>
+                <div class="goal-entry-row">
+                    <label>
+                        Strength
+                        <select id="goal-entry-strength">
+                            <option value="even">Even</option>
+                            <option value="pp">PP</option>
+                            <option value="shg">SHG</option>
+                        </select>
+                    </label>
+                    <label class="option-main">
+                        <input type="checkbox" id="goal-entry-empty-net">
+                        <span>Empty net</span>
+                    </label>
+                </div>
+                <datalist id="goal-entry-roster"></datalist>
+                <p id="goal-entry-error" class="goal-entry-error" role="alert"></p>
+                <div class="goal-entry-actions">
+                    <button type="button" id="goal-entry-delete" class="advanced-button">Delete</button>
+                    <button type="submit" class="advanced-button goal-entry-save">Save</button>
+                </div>
+            </form>
+        </dialog>
     </div>
-    <script src="/static/js/app.js?v=20261110b"></script>
+    <script src="/static/js/app.js?v=20261112a"></script>
 </body>
 </html>

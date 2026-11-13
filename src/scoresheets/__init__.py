@@ -4,6 +4,9 @@
 mock game file (``mock.py``). Another site needs a module with a ``loader``
 like theirs, and a line in ``open_feed``.
 
+Goals can also be entered by hand (``manual.py``) when the scoresheet isn't
+being updated.
+
 Scoresheets hold real players' names: don't store or log them.
 """
 
@@ -19,6 +22,7 @@ from .feed import (
     Strength,
 )
 from . import gamesheetstats, mock
+from .manual import ManualGoal, ManualGoals, player_text
 from .mock import is_mock_game
 
 

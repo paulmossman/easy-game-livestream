@@ -1251,7 +1251,8 @@ def create_youtube_broadcast_for_channel(channel_id, left_team=None, right_team=
     title = youtube_title_for_today(left_team=left_team, right_team=right_team)
     latency = config.get('youtube_latency_preference', 'ultraLow')
     privacy = config.get('youtube_privacy_status', 'public')
-    description = scoresheet_page_url()
+    scoresheet_url = scoresheet_page_url()
+    description = f'Scoresheet: {scoresheet_url}' if scoresheet_url else ''
 
     stream_response = service.liveStreams().insert(
         part='snippet,cdn,contentDetails,status',

@@ -1,16 +1,17 @@
 import unittest
+import urllib.error
+from unittest import mock
 
-from src.gamesheet import (
-    GameSheetError,
-    GoalChangeKind,
-    GoalFeed,
-    Player,
-    Strength,
+from src.scoresheets import GameNotStarted, GoalChangeKind, GoalFeed, Player, ScoresheetError, Strength
+from src.scoresheets.gamesheetstats import (
     decode_value,
     document_url,
+    fetch_document,
     game_id_from_url,
     game_is_over,
     goals_from_document,
+    is_game_url,
+    loader,
 )
 
 GAME_URL = 'https://gamesheetstats.com/seasons/1/games/12345'
@@ -121,7 +122,7 @@ class DecodeTests(unittest.TestCase):
                          {'s': 'x', 'n': 3, 'b': True, 'z': None, 'a': [1, 'y'], 'e': [], 'm': {'k': 'v'}})
 
     def test_decode_value_rejects_untyped_value(self):
-        with self.assertRaises(GameSheetError):
+        with self.assertRaises(ScoresheetError):
             decode_value({'stringValue': 'x', 'integerValue': '1'})
 
 
@@ -244,25 +245,25 @@ class StrengthTests(unittest.TestCase):
 class MalformedDocumentTests(unittest.TestCase):
     def test_missing_events(self):
         for doc in ({}, {'fields': {}}, {'fields': {'events': encode('x')}}):
-            with self.subTest(doc=doc), self.assertRaises(GameSheetError):
+            with self.subTest(doc=doc), self.assertRaises(ScoresheetError):
                 goals_from_document(doc)
 
     def test_goal_without_scorer(self):
         bad = goal('g', '01:10:00', HOME, TESTY)
         del bad['for']['scorer']
 
-        with self.assertRaises(GameSheetError):
+        with self.assertRaises(ScoresheetError):
             goals_from_document(document(bad))
 
     def test_goal_with_unexpected_clock(self):
-        with self.assertRaises(GameSheetError):
+        with self.assertRaises(ScoresheetError):
             goals_from_document(document(goal('g', '10:00', HOME, TESTY)))
 
     def test_goal_with_unknown_team(self):
         bad = goal('g', '01:10:00', HOME, TESTY)
         bad['for']['team'] = dict(HOME, vs='neutral')
 
-        with self.assertRaises(GameSheetError):
+        with self.assertRaises(ScoresheetError):
             goals_from_document(document(bad))
 
 
@@ -277,116 +278,68 @@ class GameIsOverTests(unittest.TestCase):
     def test_missing_game_details(self):
         doc = document()
         del doc['fields']['data']
-        with self.assertRaises(GameSheetError):
+        with self.assertRaises(ScoresheetError):
             game_is_over(doc)
 
 
-class GoalFeedTests(unittest.TestCase):
+class LoaderTests(unittest.TestCase):
     def setUp(self):
         self.documents = []
         self.requests = []
-        self.time = 1000.0
 
         def fetch(game_id, api_key):
             self.requests.append((game_id, api_key))
             return self.documents.pop(0)
 
-        self.feed = GoalFeed(GAME_URL, api_key='key', settle_seconds=10, fetch=fetch, now=lambda: self.time)
+        self.feed = GoalFeed(loader(GAME_URL, api_key='key', fetch=fetch))
 
-    def poll(self, *events, at=None, **game):
-        if at is not None:
-            self.time = at
+    def poll(self, *events, **game):
         self.documents.append(document(*events, **game))
         return [(change.kind, change.goal.id) for change in self.feed.poll()]
 
-    def test_reports_added_updated_and_removed_goals(self):
-        first = goal('g1', '01:10:00', HOME, TESTY)
-        second = goal('g2', '01:05:00', AWAY, DUMMY)
+    def test_fetches_the_game_and_reads_its_goals(self):
+        self.assertEqual(self.poll(goal('g1', '01:10:00', HOME, TESTY)), [(GoalChangeKind.ADDED, 'g1')])
+        self.assertEqual(self.requests, [('12345', 'key')])
+        self.assertFalse(self.feed.game_over)
 
-        self.assertEqual(self.poll(first), [(GoalChangeKind.ADDED, 'g1')])
-        self.assertEqual(self.poll(first), [])
-        self.assertEqual(self.poll(first, second), [(GoalChangeKind.ADDED, 'g2')])
+        self.poll(goal('g1', '01:10:00', HOME, TESTY), status='unofficial')
+        self.assertTrue(self.feed.game_over)
 
-        corrected = goal('g1', '01:10:00', HOME, FAKEY, [TESTY])
-        self.assertEqual(self.poll(corrected, second), [(GoalChangeKind.UPDATED, 'g1')])
-        self.assertEqual(self.feed.goals[0].scorer.last_name, 'FAKERSON')
+    def test_deleted_goal_is_removed(self):
+        self.poll(goal('g1', '01:10:00', HOME, TESTY))
 
         # A deleted event is left behind as GameEvent.IdOnly.
-        self.assertEqual(self.poll(corrected, {'id': 'g2', 'type': 'GameEvent.IdOnly'}),
-                         [(GoalChangeKind.REMOVED, 'g2')])
-        self.assertEqual([g.id for g in self.feed.goals], ['g1'])
-        self.assertEqual(self.requests[0], ('12345', 'key'))
+        self.assertEqual(self.poll({'id': 'g1', 'type': 'GameEvent.IdOnly'}), [(GoalChangeKind.REMOVED, 'g1')])
 
-    def test_strength_change_is_an_update(self):
+    def test_penalty_entered_after_the_goal_updates_its_strength(self):
         g = goal('g1', '01:10:00', HOME, TESTY)
         self.poll(g)
 
-        # The scorekeeper enters the penalty after the goal.
         self.assertEqual(self.poll(g, penalty('p', AWAY, '01:11:00', '01:10:00')), [(GoalChangeKind.UPDATED, 'g1')])
         self.assertEqual(self.feed.goals[0].strength, Strength.POWER_PLAY)
 
-    def test_goal_settles_after_assists_stop_changing(self):
-        self.poll(at=1000)
-        scorer_only = goal('g1', '01:10:00', HOME, TESTY)
-        one_assist = goal('g1', '01:10:00', HOME, TESTY, [FAKEY])
-        two_assists = goal('g1', '01:10:00', HOME, TESTY, [FAKEY, SAMPLE])
+    def test_is_game_url(self):
+        self.assertTrue(is_game_url(GAME_URL))
+        self.assertTrue(is_game_url('https://www.gamesheetstats.com/seasons/1/games/12345'))
+        self.assertFalse(is_game_url('https://notgamesheetstats.com/seasons/1/games/12345'))
+        self.assertFalse(is_game_url('mock-game.yml'))
 
-        self.assertEqual(self.poll(scorer_only, at=1005), [(GoalChangeKind.ADDED, 'g1')])
-        self.assertEqual(self.poll(one_assist, at=1010), [(GoalChangeKind.UPDATED, 'g1')])
-        self.assertEqual(self.poll(two_assists, at=1015), [(GoalChangeKind.UPDATED, 'g1')])
-        self.assertEqual(self.poll(two_assists, at=1020), [])
-        self.assertFalse(self.feed.all_settled)
 
-        # Settles 10 s after the last change.
-        self.assertEqual(self.poll(two_assists, at=1025), [(GoalChangeKind.SETTLED, 'g1')])
-        self.assertEqual(len(self.feed.goals[0].assists), 2)
-        self.assertTrue(self.feed.all_settled)
-        self.assertEqual(self.poll(two_assists, at=1100), [])
+class FetchDocumentTests(unittest.TestCase):
+    def fail_with(self, code):
+        error = urllib.error.HTTPError(document_url('12345'), code, 'error', {}, None)
+        return mock.patch('urllib.request.urlopen', side_effect=error)
 
-    def test_settled_goal_that_changes_settles_again(self):
-        self.poll(at=1000)
-        g = goal('g1', '01:10:00', HOME, TESTY)
-        self.poll(g, at=1001)
-        self.assertEqual(self.poll(g, at=1011), [(GoalChangeKind.SETTLED, 'g1')])
+    def test_missing_document_means_not_started(self):
+        with self.fail_with(404), self.assertRaises(GameNotStarted) as raised:
+            fetch_document('12345')
+        self.assertEqual(str(raised.exception), 'Game not started yet.')
 
-        corrected = goal('g1', '01:10:00', HOME, FAKEY)
-        self.assertEqual(self.poll(corrected, at=1100), [(GoalChangeKind.UPDATED, 'g1')])
-        self.assertEqual(self.poll(corrected, at=1110), [(GoalChangeKind.SETTLED, 'g1')])
-
-    def test_goals_already_scored_at_first_poll_count_as_settled(self):
-        g = goal('g1', '01:10:00', HOME, TESTY)
-
-        self.assertEqual(self.poll(g, at=1000), [(GoalChangeKind.ADDED, 'g1')])
-        self.assertTrue(self.feed.all_settled)
-        self.assertEqual(self.poll(g, at=1100), [])
-
-    def test_removed_goal_does_not_settle(self):
-        self.poll(at=1000)
-        self.poll(goal('g1', '01:10:00', HOME, TESTY), at=1001)
-
-        self.assertEqual(self.poll(at=1020), [(GoalChangeKind.REMOVED, 'g1')])
-        self.assertTrue(self.feed.all_settled)
-
-    def test_game_over(self):
-        self.poll()
-        self.assertFalse(self.feed.game_over)
-        self.poll(status='unofficial', end_time='2026-01-01T14:00:00Z')
-        self.assertTrue(self.feed.game_over)
-
-    def test_fetch_errors_leave_goals_unchanged(self):
-        self.poll(goal('g1', '01:10:00', HOME, TESTY))
-
-        def failing_fetch(game_id, api_key):
-            raise GameSheetError('GameSheet request failed: HTTP 503')
-
-        self.feed._fetch = failing_fetch
-        with self.assertRaises(GameSheetError):
-            self.feed.poll()
-        self.assertEqual([g.id for g in self.feed.goals], ['g1'])
-
-    def test_rejects_non_gamesheet_url(self):
-        with self.assertRaises(ValueError):
-            GoalFeed('https://example.com/game/1')
+    def test_other_http_errors(self):
+        with self.fail_with(500), self.assertRaises(ScoresheetError) as raised:
+            fetch_document('12345')
+        self.assertNotIsInstance(raised.exception, GameNotStarted)
+        self.assertEqual(str(raised.exception), 'GameSheet request failed: HTTP 500')
 
 
 if __name__ == '__main__':

@@ -803,7 +803,11 @@ function renderState(state) {
             celebrate.checked = Boolean(state[`${side}_celebrate`]);
         }
     });
+    renderScoresheet(state.scoresheet);
     document.getElementById('celebrate-position').value = state.celebrate_position || 'top';
+    document.querySelectorAll('.goal-auto-show').forEach((autoShow) => {
+        autoShow.checked = Boolean(state.goal_auto_show);
+    });
 
     const toggleButton = document.getElementById('start-stop-button');
     const muteOnStop = document.getElementById('mute-on-stop');
@@ -844,6 +848,237 @@ function renderState(state) {
 
     muteToggleButton.textContent = isMuted ? 'Un-mute' : 'Mute';
     muteToggleButton.classList.toggle('is-hidden', Boolean(state.mute_on_stop));
+}
+
+// Matches the overlay caption: until the goal settles, more assists may be
+// on the way, so they end in "...".
+function goalAssistsText(goal) {
+    const assists = !goal.settled && goal.assists.length < 2 ? [...goal.assists, '...'] : goal.assists;
+    return assists.length ? assists.join(', ') : 'unassisted';
+}
+
+// Each team panel's Scoring section lists that team's goals, from the
+// scoresheet and entered by hand, for sides with Celebrate on.
+function renderScoring(scoresheet) {
+    ['left', 'right'].forEach((side) => {
+        const section = document.getElementById(`${side}-scoring`);
+        const list = document.getElementById(`${side}-scoring-list`);
+        if (!section || !list || !scoresheet) {
+            return;
+        }
+        section.hidden = !document.getElementById(`${side}-celebrate`)?.checked;
+        renderPeriodSummary(section.querySelector('.period-summary'), side, scoresheet);
+        const goals = scoresheet.goals.filter((goal) => goal.side === side);
+        section.querySelector('.scoring-count').textContent = goals.length ? ` (${goals.length})` : '';
+        if (!goals.length) {
+            const empty = document.createElement('li');
+            empty.className = 'scoring-empty';
+            empty.textContent = 'No goals yet';
+            list.replaceChildren(empty);
+            return;
+        }
+        list.replaceChildren(...goals.map((goal) => {
+            const row = document.createElement('li');
+            const showing = goal.id === scoresheet.showing;
+            row.className = 'scoring-goal';
+            row.classList.toggle('is-pending', !goal.settled);
+            row.classList.toggle('is-showing', showing);
+            row.classList.toggle('is-manual', Boolean(goal.manual));
+            row.title = goal.manual ? 'Entered by hand' : goal.settled ? '' : 'Still being entered on the scoresheet';
+
+            const meta = document.createElement('span');
+            meta.className = 'scoring-goal-meta';
+            meta.textContent = `P${goal.period} ${goal.clock}`;
+
+            const text = document.createElement('span');
+            text.className = 'scoring-goal-text';
+            text.textContent = [`${goal.scorer} (${goalAssistsText(goal)})`, ...goal.tags].join(' ');
+
+            // Shows this goal's caption, or hides it while it's showing.
+            const toggle = document.createElement('button');
+            toggle.type = 'button';
+            toggle.className = 'advanced-button scoresheet-small-button';
+            toggle.textContent = showing ? 'Hide' : 'Show';
+            toggle.addEventListener('click', () => postScoresheet(showing
+                ? '/api/scoresheet/hide'
+                : `/api/scoresheet/goals/${encodeURIComponent(goal.id)}/show`));
+
+            const actions = document.createElement('span');
+            actions.className = 'scoring-goal-actions';
+            actions.append(toggle);
+            // Goals entered by hand can be changed; scoresheet goals are
+            // corrected on the scoresheet.
+            if (goal.manual) {
+                const edit = document.createElement('button');
+                edit.type = 'button';
+                edit.className = 'advanced-button scoresheet-small-button';
+                edit.textContent = 'Edit';
+                edit.addEventListener('click', () => openGoalEntry(side, goal));
+                actions.append(edit);
+            }
+
+            row.append(meta, text, actions);
+            return row;
+        }));
+    });
+}
+
+// Each Scoring section can be collapsed to just its heading. Remembered per
+// browser; storage can be unavailable, so it's only a convenience.
+const scoringCollapsedKey = (side) => `scoring-collapsed-${side}`;
+
+function setScoringCollapsed(side, collapsed) {
+    const section = document.getElementById(`${side}-scoring`);
+    if (!section) {
+        return;
+    }
+    section.classList.toggle('is-collapsed', collapsed);
+    section.querySelector('.scoring-collapse').setAttribute('aria-expanded', String(!collapsed));
+    try {
+        window.localStorage.setItem(scoringCollapsedKey(side), collapsed ? '1' : '0');
+    } catch (error) {
+        // Not remembered.
+    }
+}
+
+function restoreScoringCollapsed() {
+    ['left', 'right'].forEach((side) => {
+        let collapsed = false;
+        try {
+            collapsed = window.localStorage.getItem(scoringCollapsedKey(side)) === '1';
+        } catch (error) {
+            // Starts expanded.
+        }
+        setScoringCollapsed(side, collapsed);
+    });
+}
+
+// Each Scoring section's Summary drop-down: Off, or a period whose scoring
+// for this team is shown on the overlay. Only one side's is on at a time.
+function renderPeriodSummary(select, side, scoresheet) {
+    const options = [['', 'Off'], ...(scoresheet.periods || []).map((period) => [
+        String(period.period),
+        period.period === scoresheet.current_period ? `${period.name} (now)` : period.name
+    ])];
+    const signature = JSON.stringify(options);
+    if (select.dataset.options !== signature) {
+        select.dataset.options = signature;
+        select.replaceChildren(...options.map(([value, label]) => {
+            const option = document.createElement('option');
+            option.value = value;
+            option.textContent = label;
+            return option;
+        }));
+    }
+    const on = latestState.period_summary_side === side && latestState.period_summary_period;
+    select.value = on ? String(latestState.period_summary_period) : '';
+}
+
+// The goal-entry dialog, for entering a goal by hand when the scoresheet
+// isn't being updated, or changing one entered by hand. Opened from a team's
+// Scoring section; `goal` is the goal being edited, or undefined for a new one.
+let goalEntryTarget = null;
+
+function openGoalEntry(side, goal) {
+    const scoresheet = latestState.scoresheet || {};
+    const values = goal ? goal.entry : ((scoresheet.entry_defaults || {})[side] || {});
+    const teamName = document.getElementById(`${side}-team`).value.trim() || (side === 'left' ? 'Left' : 'Right');
+    goalEntryTarget = { side, goalId: goal ? goal.id : null };
+    document.getElementById('goal-entry-title').textContent = `${teamName} goal`;
+    document.getElementById('goal-entry-period').value = values.period || 1;
+    document.getElementById('goal-entry-clock').value = values.clock || '';
+    document.getElementById('goal-entry-scorer').value = values.scorer || '';
+    const assists = values.assists || [];
+    document.getElementById('goal-entry-assist-1').value = assists[0] || '';
+    document.getElementById('goal-entry-assist-2').value = assists[1] || '';
+    document.getElementById('goal-entry-strength').value = values.strength || 'even';
+    document.getElementById('goal-entry-empty-net').checked = Boolean(values.empty_net);
+    document.getElementById('goal-entry-delete').hidden = !goal;
+    document.getElementById('goal-entry-error').textContent = '';
+    // Typing a number offers the matching roster player.
+    const roster = (scoresheet.rosters || {})[side] || [];
+    document.getElementById('goal-entry-roster').replaceChildren(...roster.map((player) => {
+        const option = document.createElement('option');
+        option.value = `${player.jersey} ${player.name}`;
+        return option;
+    }));
+    const dialog = document.getElementById('goal-entry-dialog');
+    dialog.showModal();
+    document.getElementById('goal-entry-scorer').focus();
+}
+
+async function sendGoalEntry(method, url, data) {
+    const response = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: data ? JSON.stringify(data) : undefined
+    });
+    if (response.ok) {
+        document.getElementById('goal-entry-dialog').close();
+        return;
+    }
+    const body = await response.json().catch(() => ({}));
+    document.getElementById('goal-entry-error').textContent = body.error || `Not saved (${response.status})`;
+}
+
+async function saveGoalEntry(event) {
+    event.preventDefault();
+    if (!goalEntryTarget) {
+        return;
+    }
+    const data = {
+        side: goalEntryTarget.side,
+        period: document.getElementById('goal-entry-period').value,
+        clock: document.getElementById('goal-entry-clock').value.trim(),
+        scorer: document.getElementById('goal-entry-scorer').value.trim(),
+        assists: ['goal-entry-assist-1', 'goal-entry-assist-2']
+            .map((id) => document.getElementById(id).value.trim())
+            .filter(Boolean),
+        strength: document.getElementById('goal-entry-strength').value,
+        empty_net: document.getElementById('goal-entry-empty-net').checked
+    };
+    if (goalEntryTarget.goalId) {
+        await sendGoalEntry('PUT', `/api/scoresheet/manual-goals/${encodeURIComponent(goalEntryTarget.goalId)}`, data);
+    } else {
+        await sendGoalEntry('POST', '/api/scoresheet/manual-goals', data);
+    }
+}
+
+async function deleteGoalEntry() {
+    if (!goalEntryTarget || !goalEntryTarget.goalId || !window.confirm('Delete this goal?')) {
+        return;
+    }
+    await sendGoalEntry('DELETE', `/api/scoresheet/manual-goals/${encodeURIComponent(goalEntryTarget.goalId)}`);
+}
+
+// The scoresheet controls are only rendered when scoresheet_url is configured.
+function renderScoresheet(scoresheet) {
+    renderScoring(scoresheet);
+    const status = document.getElementById('scoresheet-status');
+    if (!status || !scoresheet) {
+        return;
+    }
+    status.classList.toggle('is-error', Boolean(scoresheet.error));
+    if (scoresheet.error) {
+        status.textContent = scoresheet.error;
+    } else if (scoresheet.checked_at) {
+        const checkedAt = new Date(scoresheet.checked_at * 1000).toLocaleTimeString();
+        const prefix = scoresheet.not_started ? 'Game not started yet. ' : scoresheet.game_over ? 'Game over. ' : '';
+        status.textContent = `${prefix}Checked ${checkedAt}`;
+    } else {
+        status.textContent = 'Waiting for the scoresheet';
+    }
+}
+
+async function postScoresheet(url, data) {
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data || {})
+    });
+    if (!response.ok) {
+        console.error('Scoresheet update failed', response.status);
+    }
 }
 
 function renderStreamQuality(quality) {
@@ -1111,6 +1346,9 @@ function canHandleGlobalKeypress(event) {
 }
 
 function canHandlePrimaryAction() {
+    if (document.getElementById('goal-entry-dialog').open) {
+        return false;
+    }
     const activeTag = document.activeElement ? document.activeElement.tagName : '';
     const isEditable = activeTag === 'INPUT' || activeTag === 'TEXTAREA' || activeTag === 'SELECT';
     if (isEditable) {
@@ -1218,7 +1456,8 @@ function handleTabFocus(event) {
     }
 
     const target = event.target;
-    if (!target.matches('input[type="checkbox"], input[type="text"], textarea')) {
+    // In a dialog, Tab moves between its fields as usual.
+    if (!target.matches('input[type="checkbox"], input[type="text"], textarea') || target.closest('dialog')) {
         return;
     }
 
@@ -1280,6 +1519,36 @@ document.getElementById('preview-advanced-button').addEventListener('click', () 
 document.getElementById('preview-dialog-close').addEventListener('click', () => {
     document.getElementById('preview-settings-dialog').close();
 });
+// One team's period summary at a time: choosing one turns the other off.
+document.querySelectorAll('.period-summary').forEach((select) => {
+    select.addEventListener('change', (event) => {
+        const period = event.target.value;
+        postState(period
+            ? { period_summary_side: select.dataset.side, period_summary_period: Number(period) }
+            : { period_summary_side: null, period_summary_period: null });
+    });
+});
+document.querySelectorAll('.scoring-collapse').forEach((button) => {
+    button.addEventListener('click', () => {
+        const section = document.getElementById(`${button.dataset.side}-scoring`);
+        setScoringCollapsed(button.dataset.side, !section.classList.contains('is-collapsed'));
+    });
+});
+restoreScoringCollapsed();
+document.querySelectorAll('.scoring-add').forEach((button) => {
+    button.addEventListener('click', () => openGoalEntry(button.dataset.side));
+});
+document.getElementById('goal-entry-form').addEventListener('submit', saveGoalEntry);
+document.getElementById('goal-entry-delete').addEventListener('click', deleteGoalEntry);
+document.getElementById('goal-entry-close').addEventListener('click', () => {
+    document.getElementById('goal-entry-dialog').close();
+});
+// Each team's Scoring section has one; they all set the same setting.
+document.querySelectorAll('.goal-auto-show').forEach((autoShow) => {
+    autoShow.addEventListener('change', (event) => {
+        postState({ goal_auto_show: event.target.checked });
+    });
+});
 ['left', 'right'].forEach((side) => {
     document.getElementById(`${side}-celebrate`)?.addEventListener('change', (event) => {
         postState({ [`${side}_celebrate`]: event.target.checked });
@@ -1288,11 +1557,11 @@ document.getElementById('preview-dialog-close').addEventListener('click', () => 
 document.getElementById('celebrate-position').addEventListener('change', (event) => {
     postState({ celebrate_position: event.target.value });
 });
-// The GameSheet panel is only rendered when scoresheet_url is configured.
-document.getElementById('gamesheet-reload-button')?.addEventListener('click', (event) => {
+// The Reload button is only rendered for a game with a web page, not a mock.
+document.getElementById('scoresheet-reload-button')?.addEventListener('click', (event) => {
     // The button is inside the <summary>, so don't also open/close the panel.
     event.preventDefault();
-    const frame = document.getElementById('gamesheet-frame');
+    const frame = document.getElementById('scoresheet-frame');
     frame.src = frame.src;
 });
 document.querySelectorAll('input[name="preview-mode"]').forEach((radio) => {
@@ -1316,6 +1585,7 @@ window.addEventListener('message', (event) => {
 });
 
 socket.on('state_updated', renderState);
+socket.on('scoresheet_updated', renderScoresheet);
 
 window.addEventListener('resize', () => drawRelayMetricsChart(relayMetricSamples));
 initializePreviewPlayer();

@@ -10,7 +10,7 @@ scorekeeper entering goals::
         team: home         # or away
         scorer: 17 TESTY MCTESTFACE
         assists: [4 FAKEY FAKERSON, 9 SAMPLE SKATERSON]
-        strength: pp       # optional: pp or shg
+        strength: pp       # optional: even (the default), pp or shg
         empty_net: true    # optional
 
 Players are a jersey number then the names, in capitals like GameSheet. A
@@ -24,7 +24,7 @@ from typing import Callable, List, Tuple
 from .feed import Goal, Player, ScoresheetError, Strength
 
 CLOCK_PATTERN = re.compile(r'^(\d+):(\d\d)$')
-STRENGTHS = {'pp': 'power_play', 'shg': 'shorthanded'}
+STRENGTHS = {'even': 'even', 'pp': 'power_play', 'shg': 'shorthanded'}
 
 
 def is_mock_game(url: str) -> bool:
@@ -96,7 +96,7 @@ def _goal(index: int, goal) -> Goal:
         assists = [assists]
     strength = str(goal.get('strength') or '').lower()
     if strength and strength not in STRENGTHS:
-        raise ScoresheetError(f'Mock goal {index} strength must be pp or shg')
+        raise ScoresheetError(f'Mock goal {index} strength must be even, pp or shg')
     try:
         period = int(goal.get('period', 1))
     except (TypeError, ValueError) as e:

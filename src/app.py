@@ -116,6 +116,11 @@ state = {
     'message_centered': True,
     'message_background': True,
     'goal_auto_show': bool(config.get('goal_auto_show', True)),
+    # The side ('left', 'right') whose period scoring summary is on the
+    # overlay, or None, and the period it's for. Chosen in the team's
+    # Scoring section.
+    'period_summary_side': None,
+    'period_summary_period': None,
 }
 # Each side's Celebrate checkbox starts from the config for its startup team
 # name, then is only changed in the UI, not by renaming the team.
@@ -266,6 +271,7 @@ overlay_base_layout = {
     'message_line_spacing': 10,
     'message_outline': 3,
     'goal_font': 30,
+    'goal_line_spacing': 8,
 }
 overlay_penalty_filters = {'left': 'drawtext@left_penalty', 'right': 'drawtext@right_penalty'}
 sent_penalty_x_expressions = {}
@@ -512,6 +518,9 @@ def current_overlay_text():
         time_text = format_overlay_clock(time_text)
 
     goal_caption = current_goal_caption()
+    # The period summary is in the same place, so a goal caption or
+    # "<Team> Goal!" replaces it while it's showing.
+    goal_text = goal_caption or ('' if celebrate_text else current_period_summary())
     return {
         'left': left_display,
         'right': right_display,
@@ -525,7 +534,7 @@ def current_overlay_text():
         'celebrate': '' if goal_caption else celebrate_text,
         'message': message_text if not state['message_bold'] else '',
         'message_bold': message_text if state['message_bold'] else '',
-        'goal': goal_caption,
+        'goal': goal_text,
     }
 
 def scoresheet_team_name(goal, side_teams):
@@ -533,12 +542,54 @@ def scoresheet_team_name(goal, side_teams):
         return goal.team_name
     return side_teams.get(goal.team) or goal.team.capitalize()
 
+def goal_caption(goal, side_teams, settled=True):
+    return goal_teams.caption(goal, scoresheet_team_name(goal, side_teams), settled=settled)
+
+def goal_summary_line(goal, side_teams):
+    # A goal's settled caption without the "<Team> Goal: " the summary's
+    # heading already says.
+    return goal_teams.goal_text(goal, scoresheet_team_name(goal, side_teams))
+
 def current_goal_caption():
     goal = scoresheet_goal(scoresheet['showing'])
     if goal is None:
         return ''
+    return goal_caption(goal, scoresheet_side_teams(), settled=goal_is_settled(goal.id))
+
+def ordinal(number):
+    suffix = 'th' if 10 <= number % 100 <= 20 else {1: 'st', 2: 'nd', 3: 'rd'}.get(number % 10, 'th')
+    return f'{number}{suffix}'
+
+def period_name(period):
+    # "2nd period" for a period with a numbered phase ("Period 2"); after
+    # those, it's overtime: "OT".
+    numbered = {int(number) for phase in phase_configurations for number in re.findall(r'\d+', phase['name'])}
+    if numbered and period > max(numbered):
+        return 'OT'
+    return f'{ordinal(period)} period'
+
+def current_period_summary():
+    # "<Team> 2nd period scoring:" (or "<Team> OT scoring:") then a line per
+    # goal, each the goal's settled caption without the team. Only while the
+    # side's Celebrate is on.
+    side = state['period_summary_side']
+    period = state['period_summary_period']
+    if side not in ('left', 'right') or not period or not state[f'{side}_celebrate']:
+        return ''
     side_teams = scoresheet_side_teams()
-    return goal_teams.caption(goal, scoresheet_team_name(goal, side_teams), settled=goal_is_settled(goal.id))
+    lines = [
+        goal_summary_line(goal, side_teams)
+        for goal in all_goals()
+        if goal.period == period and scoring_side(goal, side_teams) == side
+    ]
+    return '\n'.join([f'{overlay_team_name(side)} {period_name(period)} scoring:'] + (lines or ['No goals']))
+
+def summary_periods():
+    # The periods a summary can be for: each timed phase's (Period 1-3, OT)
+    # and any other period with a goal.
+    periods = {phase_period(phase['name']) for phase in phase_configurations if phase_has_duration(phase['name'])}
+    periods.update(goal.period for goal in all_goals())
+    return sorted(periods)
 
 def scoresheet_goal(goal_id):
     # A scoresheet goal or a manual one.
@@ -1528,7 +1579,7 @@ def overlay_video_filters(input_label, output_label, penalty_x, message_options,
         f"[v_left_penalty]{overlay_penalty_filters['right']}=fontfile={primary_font_path}:textfile={overlay_right_penalty_text_path}:reload=1:fontcolor=white:fontsize={layout['small_font']}:{box}:x={penalty_x['right']}:y={margin}[v_right_penalty]",
         f"[v_right_penalty]drawtext=fontfile={primary_font_path}:textfile={overlay_mute_text_path}:reload=1:fontcolor=white:fontsize={layout['small_font']}:{box}:x=(w-tw)/2:y=h-th-{margin}[v_mute]",
         f"[v_mute]{overlay_celebrate_filter}=fontfile={primary_font_path}:textfile={overlay_celebrate_text_path}:reload=1:expansion=none:fontcolor=white:fontsize={layout['time_font']}:{box}:x=(w-tw)/2:y={celebrate_y}[v_celebrate]",
-        f"[v_celebrate]{overlay_goal_filter}=fontfile={primary_font_path}:textfile={overlay_goal_text_path}:reload=1:expansion=none:fontcolor=white:fontsize={layout['goal_font']}:{box}:x=(w-tw)/2:y={celebrate_y}[v_goal]",
+        f"[v_celebrate]{overlay_goal_filter}=fontfile={primary_font_path}:textfile={overlay_goal_text_path}:reload=1:expansion=none:fontcolor=white:fontsize={layout['goal_font']}:line_spacing={layout['goal_line_spacing']}:text_align=center:{box}:x=(w-tw)/2:y={celebrate_y}[v_goal]",
         f"[v_goal]{overlay_message_filters[0]}=fontfile={regular_font_path}:textfile={overlay_message_text_path}:{message}[v_message]",
         f"[v_message]{overlay_message_filters[1]}=fontfile={primary_font_path}:textfile={overlay_message_bold_text_path}:{message}[{output_label}]",
     ]
@@ -1738,10 +1789,14 @@ def goal_entry_defaults(side):
 def goal_order(goal):
     return goal.period, -(parse_clock(goal.clock) or 0)
 
+def all_goals():
+    # Scoresheet and manual goals, in game order.
+    return sorted(scoresheet['goals'] + manual_goals.goals, key=goal_order)
+
 def current_scoresheet_payload():
     side_teams = scoresheet_side_teams()
     goals = []
-    for goal in sorted(scoresheet['goals'] + manual_goals.goals, key=goal_order):
+    for goal in all_goals():
         manual = is_manual_goal(goal)
         entry = dict(
             goal_teams.describe(goal, goal_team(goal, side_teams)),
@@ -1769,6 +1824,9 @@ def current_scoresheet_payload():
         'goals': goals,
         'rosters': rosters,
         'entry_defaults': entry_defaults,
+        # The periods the summary drop-downs offer, and the current one.
+        'periods': [{'period': period, 'name': period_name(period)} for period in summary_periods()],
+        'current_period': phase_period(state['phase']),
         'game_over': scoresheet['game_over'],
         'error': scoresheet['error'],
         'not_started': scoresheet['not_started'],
@@ -1939,6 +1997,13 @@ def apply_overlay_update(data):
             data['message_text'] = str(data['message_text']).replace('\r\n', '\n').replace('\r', '\n').strip()
         if 'celebrate_position' in data and data['celebrate_position'] not in celebrate_positions:
             data.pop('celebrate_position')
+        if 'period_summary_side' in data and data['period_summary_side'] not in ('left', 'right'):
+            data['period_summary_side'] = None
+        if 'period_summary_period' in data:
+            try:
+                data['period_summary_period'] = max(1, int(data['period_summary_period']))
+            except (TypeError, ValueError):
+                data['period_summary_period'] = None
         if 'clock_mode' in data and data['clock_mode'] not in ('stop_time', 'run_time'):
             data['clock_mode'] = 'stop_time'
         state.update(data)

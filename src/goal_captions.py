@@ -153,15 +153,20 @@ class Teams:
             'tags': tags,
         }
 
-    def caption(self, goal, team_name: str, settled: bool = True) -> str:
-        """The one-line overlay caption for a goal by ``team_name``.
+    def goal_text(self, goal, team_name: str, settled: bool = True) -> str:
+        """Who scored a goal by ``team_name``: "MacTestface (Fakerson, ...) PP".
 
-        "Testers Goal: MacTestface (Fakerson, ...) PP". Until the goal
-        has settled, more assists may be on the way, so they end in "...".
+        Until the goal has settled, more assists may be on the way, so they
+        end in "...".
         """
         description = self.describe(goal, team_name)
         assists = description['assists']
         if not settled and len(assists) < MAX_ASSISTS:
             assists = assists + ['...']
         assist_text = ', '.join(assists) or 'unassisted'
-        return ' '.join([f'{team_name} Goal: {description["scorer"]} ({assist_text})'] + description['tags'])
+        return ' '.join([f'{description["scorer"]} ({assist_text})'] + description['tags'])
+
+    def caption(self, goal, team_name: str, settled: bool = True) -> str:
+        """The one-line overlay caption for a goal by ``team_name``:
+        "Testers Goal: MacTestface (Fakerson, ...) PP"."""
+        return f'{team_name} Goal: {self.goal_text(goal, team_name, settled)}'

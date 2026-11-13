@@ -135,6 +135,43 @@
             min-width: 0;
         }
 
+        .scoring-collapse {
+            padding: 0;
+            border: 0;
+            color: inherit;
+            background: none;
+            font: inherit;
+            cursor: pointer;
+        }
+
+        .scoring-collapse::before {
+            content: "▾ ";
+        }
+
+        .scoring-controls.is-collapsed .scoring-collapse::before {
+            content: "▸ ";
+        }
+
+        /* Collapsed, a team with lots of goals doesn't push the panel below
+           it off the screen. */
+        .scoring-controls.is-collapsed .scoring-list,
+        .scoring-controls.is-collapsed .period-summary-control {
+            display: none;
+        }
+
+        .period-summary-control {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .period-summary-control select {
+            width: auto;
+            padding: 8px 12px;
+            font-size: 1rem;
+            border-radius: 10px;
+        }
+
         .scoring-empty {
             opacity: 0.6;
         }
@@ -1260,7 +1297,7 @@
                         </div>
                         <div id="left-scoring" class="scoring-controls" hidden>
                             <div class="penalty-section-heading">
-                                <h3>Scoring</h3>
+                                <h3><button type="button" class="scoring-collapse" data-side="left" aria-expanded="true" aria-controls="left-scoring-list" title="Show or hide this team's goals">Scoring<span class="scoring-count"></span></button></h3>
                                 <button type="button" class="scoring-add" data-side="left" aria-label="Enter a left goal" title="Enter a goal by hand, when the scoresheet isn't being updated">+</button>
                                 <label class="option-main scoring-auto-show" title="Show each goal's caption once the scorekeeper has finished entering it">
                                     <input type="checkbox" class="goal-auto-show">
@@ -1268,6 +1305,12 @@
                                 </label>
                             </div>
                             <ol id="left-scoring-list" class="scoring-list" aria-live="polite"></ol>
+                            <label class="period-summary-control" title="Show this team's scoring in a period on the overlay, where the Caption setting puts it">
+                                Summary
+                                <select class="period-summary" data-side="left">
+                                    <option value="">Off</option>
+                                </select>
+                            </label>
                         </div>
                     </div>
                 </section>
@@ -1390,7 +1433,7 @@
                         </div>
                         <div id="right-scoring" class="scoring-controls" hidden>
                             <div class="penalty-section-heading">
-                                <h3>Scoring</h3>
+                                <h3><button type="button" class="scoring-collapse" data-side="right" aria-expanded="true" aria-controls="right-scoring-list" title="Show or hide this team's goals">Scoring<span class="scoring-count"></span></button></h3>
                                 <button type="button" class="scoring-add" data-side="right" aria-label="Enter a right goal" title="Enter a goal by hand, when the scoresheet isn't being updated">+</button>
                                 <label class="option-main scoring-auto-show" title="Show each goal's caption once the scorekeeper has finished entering it">
                                     <input type="checkbox" class="goal-auto-show">
@@ -1398,6 +1441,12 @@
                                 </label>
                             </div>
                             <ol id="right-scoring-list" class="scoring-list" aria-live="polite"></ol>
+                            <label class="period-summary-control" title="Show this team's scoring in a period on the overlay, where the Caption setting puts it">
+                                Summary
+                                <select class="period-summary" data-side="right">
+                                    <option value="">Off</option>
+                                </select>
+                            </label>
                         </div>
                     </div>
                 </section>
@@ -1576,6 +1625,6 @@
             </form>
         </dialog>
     </div>
-    <script src="/static/js/app.js?v=20261112a"></script>
+    <script src="/static/js/app.js?v=20261112d"></script>
 </body>
 </html>

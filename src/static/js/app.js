@@ -867,7 +867,9 @@ function renderScoring(scoresheet) {
             return;
         }
         section.hidden = !document.getElementById(`${side}-celebrate`)?.checked;
+        renderPeriodSummary(section.querySelector('.period-summary'), side, scoresheet);
         const goals = scoresheet.goals.filter((goal) => goal.side === side);
+        section.querySelector('.scoring-count').textContent = goals.length ? ` (${goals.length})` : '';
         if (!goals.length) {
             const empty = document.createElement('li');
             empty.className = 'scoring-empty';
@@ -919,6 +921,57 @@ function renderScoring(scoresheet) {
             return row;
         }));
     });
+}
+
+// Each Scoring section can be collapsed to just its heading. Remembered per
+// browser; storage can be unavailable, so it's only a convenience.
+const scoringCollapsedKey = (side) => `scoring-collapsed-${side}`;
+
+function setScoringCollapsed(side, collapsed) {
+    const section = document.getElementById(`${side}-scoring`);
+    if (!section) {
+        return;
+    }
+    section.classList.toggle('is-collapsed', collapsed);
+    section.querySelector('.scoring-collapse').setAttribute('aria-expanded', String(!collapsed));
+    try {
+        window.localStorage.setItem(scoringCollapsedKey(side), collapsed ? '1' : '0');
+    } catch (error) {
+        // Not remembered.
+    }
+}
+
+function restoreScoringCollapsed() {
+    ['left', 'right'].forEach((side) => {
+        let collapsed = false;
+        try {
+            collapsed = window.localStorage.getItem(scoringCollapsedKey(side)) === '1';
+        } catch (error) {
+            // Starts expanded.
+        }
+        setScoringCollapsed(side, collapsed);
+    });
+}
+
+// Each Scoring section's Summary drop-down: Off, or a period whose scoring
+// for this team is shown on the overlay. Only one side's is on at a time.
+function renderPeriodSummary(select, side, scoresheet) {
+    const options = [['', 'Off'], ...(scoresheet.periods || []).map((period) => [
+        String(period.period),
+        period.period === scoresheet.current_period ? `${period.name} (now)` : period.name
+    ])];
+    const signature = JSON.stringify(options);
+    if (select.dataset.options !== signature) {
+        select.dataset.options = signature;
+        select.replaceChildren(...options.map(([value, label]) => {
+            const option = document.createElement('option');
+            option.value = value;
+            option.textContent = label;
+            return option;
+        }));
+    }
+    const on = latestState.period_summary_side === side && latestState.period_summary_period;
+    select.value = on ? String(latestState.period_summary_period) : '';
 }
 
 // The goal-entry dialog, for entering a goal by hand when the scoresheet
@@ -1466,6 +1519,22 @@ document.getElementById('preview-advanced-button').addEventListener('click', () 
 document.getElementById('preview-dialog-close').addEventListener('click', () => {
     document.getElementById('preview-settings-dialog').close();
 });
+// One team's period summary at a time: choosing one turns the other off.
+document.querySelectorAll('.period-summary').forEach((select) => {
+    select.addEventListener('change', (event) => {
+        const period = event.target.value;
+        postState(period
+            ? { period_summary_side: select.dataset.side, period_summary_period: Number(period) }
+            : { period_summary_side: null, period_summary_period: null });
+    });
+});
+document.querySelectorAll('.scoring-collapse').forEach((button) => {
+    button.addEventListener('click', () => {
+        const section = document.getElementById(`${button.dataset.side}-scoring`);
+        setScoringCollapsed(button.dataset.side, !section.classList.contains('is-collapsed'));
+    });
+});
+restoreScoringCollapsed();
 document.querySelectorAll('.scoring-add').forEach((button) => {
     button.addEventListener('click', () => openGoalEntry(button.dataset.side));
 });

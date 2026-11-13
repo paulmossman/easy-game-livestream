@@ -133,5 +133,14 @@ class SideTeamsTests(unittest.TestCase):
         self.assertEqual(sides['home'], 'Home Testers')
 
 
+
+class GoalTextTests(unittest.TestCase):
+    def test_goal_text_is_the_caption_without_the_team(self):
+        teams = Teams(TEAMS_CONFIG)
+        scored = goal('home', TESTY, [FAKEY], strength=Strength.POWER_PLAY)
+        self.assertEqual(teams.goal_text(scored, 'Home Testers'), 'MacTestface (Fakerson) PP')
+        self.assertEqual(teams.caption(scored, 'Home Testers'), 'Home Testers Goal: MacTestface (Fakerson) PP')
+        self.assertEqual(teams.goal_text(scored, 'Home Testers', settled=False), 'MacTestface (Fakerson, ...) PP')
+
 if __name__ == '__main__':
     unittest.main()

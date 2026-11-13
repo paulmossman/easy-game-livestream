@@ -52,6 +52,12 @@ goals:
                          (1, '05:07', (), Strength.EVEN, False))
         self.assertEqual(g.scorer, Player('9', '', ''))
 
+    def test_even_strength(self):
+        for strength in ('even', 'EVEN', ''):
+            with self.subTest(strength=strength):
+                self.write(f"goals:\n  - {{team: home, scorer: 9, strength: '{strength}'}}\n")
+                self.assertEqual(load_mock_game(self.path)[0][0].strength, Strength.EVEN)
+
     def test_empty_file_and_game_over(self):
         self.write('')
         self.assertEqual(load_mock_game(self.path), ([], False))

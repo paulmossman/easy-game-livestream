@@ -1881,6 +1881,10 @@ def poll_scoresheet(feed):
                 # Goal IDs and times only: the names stay out of the logs.
                 print(f"Scoresheet goal {change.kind.value}: {goal.id} P{goal.period} {goal.clock} {goal.team}", flush=True)
                 if change.kind is GoalChangeKind.REMOVED:
+                    # A goal that comes back is new again. Mock goal IDs are
+                    # positions in the file, so they come back after a goal
+                    # is deleted and added again.
+                    scoresheet['auto_shown'].discard(goal.id)
                     if goal.id in scoresheet['queue']:
                         scoresheet['queue'].remove(goal.id)
                     if scoresheet['showing'] == goal.id:

@@ -130,6 +130,16 @@ celebrate_positions = ('top', 'middle', 'bottom')
 state['celebrate_position'] = str(config.get('celebrate_position') or 'top').lower()
 if state['celebrate_position'] not in celebrate_positions:
     state['celebrate_position'] = 'top'
+# The celebrate audio's volume, in percent, to match it to the game audio.
+celebrate_volume_max = 1000
+
+def normalize_celebrate_volume(value, default=100):
+    try:
+        return min(celebrate_volume_max, max(0, int(round(float(value)))))
+    except (TypeError, ValueError):
+        return default
+
+state['celebrate_volume'] = normalize_celebrate_volume(config.get('celebrate_volume', 100))
 penalty_game = PenaltyStateMachine()
 # Scoresheet goals, for the UI's goal list and the goal caption on the
 # overlay. Guarded by state_lock. Holds players' names, so don't save or log
@@ -922,7 +932,7 @@ def play_celebrate_audio(generation):
         if duration is None:
             return
         send_ffmpeg_stdin_command(f'{celebrate_audio_source} -1 seek 0|0|1')
-        send_ffmpeg_stdin_command(f'{celebrate_audio_gain} -1 volume 1.0')
+        send_ffmpeg_stdin_command(f'{celebrate_audio_gain} -1 volume {state["celebrate_volume"] / 100}')
     time.sleep(duration)
     if generation == celebrate_generation:
         send_ffmpeg_stdin_command(f'{celebrate_audio_gain} -1 volume 0')
@@ -2002,6 +2012,8 @@ def apply_overlay_update(data):
             data['message_text'] = str(data['message_text']).replace('\r\n', '\n').replace('\r', '\n').strip()
         if 'celebrate_position' in data and data['celebrate_position'] not in celebrate_positions:
             data.pop('celebrate_position')
+        if 'celebrate_volume' in data:
+            data['celebrate_volume'] = normalize_celebrate_volume(data['celebrate_volume'], state['celebrate_volume'])
         if 'period_summary_side' in data and data['period_summary_side'] not in ('left', 'right'):
             data['period_summary_side'] = None
         if 'period_summary_period' in data:

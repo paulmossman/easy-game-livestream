@@ -430,10 +430,6 @@
             gap: 16px;
         }
 
-        .celebrate-position {
-            grid-column: 1 / -1;
-        }
-
         .scoresheet-frame {
             display: block;
             width: 100%;
@@ -1408,6 +1404,10 @@
                                 <option value="middle">Middle</option>
                                 <option value="bottom">Bottom</option>
                             </select>
+                        </label>
+                        <label class="celebrate-volume" title="Volume of the goal horn (config/celebrate.m4a), to match it to the game audio">
+                            Celebrate volume %
+                            <input type="number" id="celebrate-volume" min="0" max="1000" step="5" value="100">
                         </label>
                     </div>
                 </section>

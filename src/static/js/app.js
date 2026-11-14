@@ -805,6 +805,7 @@ function renderState(state) {
     });
     renderScoresheet(state.scoresheet);
     document.getElementById('celebrate-position').value = state.celebrate_position || 'top';
+    syncInputValue('celebrate-volume', state.celebrate_volume ?? 100);
     document.querySelectorAll('.goal-auto-show').forEach((autoShow) => {
         autoShow.checked = Boolean(state.goal_auto_show);
     });
@@ -1556,6 +1557,13 @@ document.querySelectorAll('.goal-auto-show').forEach((autoShow) => {
 });
 document.getElementById('celebrate-position').addEventListener('change', (event) => {
     postState({ celebrate_position: event.target.value });
+});
+document.getElementById('celebrate-volume').addEventListener('change', (event) => {
+    if (event.target.value.trim() === '') {
+        event.target.value = latestState?.celebrate_volume ?? 100;
+        return;
+    }
+    postState({ celebrate_volume: event.target.value });
 });
 // The Reload button is only rendered for a game with a web page, not a mock.
 document.getElementById('scoresheet-reload-button')?.addEventListener('click', (event) => {

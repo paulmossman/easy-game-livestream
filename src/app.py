@@ -1762,13 +1762,25 @@ def scoring_side(goal, side_teams):
 
 manual_strength_values = {'even': 'even', 'power_play': 'pp', 'shorthanded': 'shg'}
 
-def manual_goal_entry(goal):
+def goal_entry_player(player, team_name, manual):
+    # A player as the entry form shows them. A manual goal's players are as
+    # they were typed. A scoresheet goal's are named as in its caption (the
+    # roster's text), after the number, like the form's roster suggestions:
+    # "17 MacTestface".
+    if manual:
+        return player_text(player)
+    name = goal_teams.player_name(player, team_name)
+    if not player.jersey or name == f'#{player.jersey}':
+        return name or player.jersey
+    return f'{player.jersey} {name}'
+
+def manual_goal_entry(goal, team_name=None, manual=True):
     # The goal as the entry form's fields, for editing it.
     return {
         'period': goal.period,
         'clock': goal.clock,
-        'scorer': player_text(goal.scorer),
-        'assists': [player_text(assist) for assist in goal.assists],
+        'scorer': goal_entry_player(goal.scorer, team_name, manual),
+        'assists': [goal_entry_player(assist, team_name, manual) for assist in goal.assists],
         'strength': manual_strength_values[goal.strength.value],
         'empty_net': goal.empty_net,
     }
@@ -1826,7 +1838,7 @@ def current_scoresheet_payload():
             # A scoresheet goal corrected by hand.
             edited=not manual and goal_overrides.has(goal.id),
             # The entry form's fields, for editing it.
-            entry=manual_goal_entry(goal),
+            entry=manual_goal_entry(goal, goal_team(goal, side_teams), manual),
         )
         goals.append(entry)
     rosters = {}

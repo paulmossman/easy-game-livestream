@@ -8,13 +8,17 @@ from that, so captions treat both the same.
 If the scoresheet catches up, ``ManualGoals.take_match`` finds the manual
 goal a scoresheet goal replaces, so the goal isn't listed or shown twice.
 
+A scoresheet goal can be corrected by hand too (``GoalOverrides``), for
+when the scoresheet is wrong or missing details such as assists. The
+correction is used until the scoresheet changes the goal.
+
 Players are entered as a jersey number, a name, or both: "17", "17 Smith",
 "Smith". Like scoresheets, manual goals can hold real names: don't store or
 log them.
 """
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Dict, List, Optional, Tuple
 
 from .feed import Player, Strength
@@ -76,6 +80,16 @@ def _clock_seconds(clock: str) -> int:
     return int(minutes) * 60 + int(seconds)
 
 
+def _parse_assists(data: dict) -> Tuple[Player, ...]:
+    assists = data.get('assists') or []
+    if isinstance(assists, str):
+        assists = [assists]
+    assists = [assist for assist in assists if str(assist or '').strip()]
+    if len(assists) > MAX_ASSISTS:
+        raise ValueError(f'A goal has at most {MAX_ASSISTS} assists')
+    return tuple(parse_player(assist) for assist in assists)
+
+
 def _parse(goal_id: str, team_name: str, data: dict) -> ManualGoal:
     try:
         period = int(data.get('period'))
@@ -83,12 +97,7 @@ def _parse(goal_id: str, team_name: str, data: dict) -> ManualGoal:
         raise ValueError('Period must be a number') from e
     if period < 1:
         raise ValueError('Period must be 1 or more')
-    assists = data.get('assists') or []
-    if isinstance(assists, str):
-        assists = [assists]
-    assists = [assist for assist in assists if str(assist or '').strip()]
-    if len(assists) > MAX_ASSISTS:
-        raise ValueError(f'A goal has at most {MAX_ASSISTS} assists')
+    assists = _parse_assists(data)
     strength = STRENGTHS.get(str(data.get('strength') or '').strip().lower())
     if strength is None:
         raise ValueError('Strength must be even, pp or shg')
@@ -100,7 +109,7 @@ def _parse(goal_id: str, team_name: str, data: dict) -> ManualGoal:
         period=period,
         clock=parse_clock(data.get('clock')),
         scorer=parse_player(data.get('scorer')),
-        assists=tuple(parse_player(assist) for assist in assists),
+        assists=assists,
         strength=strength,
         empty_net=bool(data.get('empty_net')),
     )
@@ -170,3 +179,52 @@ class ManualGoals:
         if not candidates:
             return None
         return self._goals.pop(min(candidates)[2])
+
+
+class GoalOverrides:
+    """Corrections entered by hand for scoresheet goals, by goal ID.
+
+    A correction replaces everything the entry form has (period, clock,
+    scorer, assists, strength, empty net); the goal keeps its ID and team.
+    Each is kept with the scoresheet's goal as it was when entered. Once the
+    scoresheet changes the goal, it has caught up, and the correction is
+    dropped.
+    """
+
+    def __init__(self) -> None:
+        # Goal ID -> (the scoresheet's goal then, the corrected goal).
+        self._overrides: Dict[str, Tuple[object, object]] = {}
+
+    def has(self, goal_id: str) -> bool:
+        return goal_id in self._overrides
+
+    def set(self, goal, data: dict) -> None:
+        """Corrects a scoresheet goal from the entry form's fields. Raises
+        ``ValueError`` like ``ManualGoals.add``."""
+        fields = _parse(goal.id, '', data)
+        corrected = replace(
+            goal,
+            period=fields.period,
+            clock=fields.clock,
+            scorer=fields.scorer,
+            assists=fields.assists,
+            strength=fields.strength,
+            empty_net=fields.empty_net,
+        )
+        self._overrides[goal.id] = (goal, corrected)
+
+    def remove(self, goal_id: str) -> bool:
+        """Goes back to the scoresheet's goal. Returns whether it was corrected."""
+        return self._overrides.pop(goal_id, None) is not None
+
+    def apply(self, goals) -> list:
+        """The scoresheet's goals, with the corrections entered by hand.
+        Drops the corrections of goals the scoresheet has changed."""
+        result = []
+        for goal in goals:
+            override = self._overrides.get(goal.id)
+            if override is not None and override[0] != goal:
+                del self._overrides[goal.id]
+                override = None
+            result.append(override[1] if override else goal)
+        return result

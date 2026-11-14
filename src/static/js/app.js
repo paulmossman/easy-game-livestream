@@ -885,7 +885,9 @@ function renderScoring(scoresheet) {
             row.classList.toggle('is-pending', !goal.settled);
             row.classList.toggle('is-showing', showing);
             row.classList.toggle('is-manual', Boolean(goal.manual));
-            row.title = goal.manual ? 'Entered by hand' : goal.settled ? '' : 'Still being entered on the scoresheet';
+            row.title = goal.manual ? 'Entered by hand'
+                : !goal.settled ? 'Still being entered on the scoresheet'
+                : goal.edited ? 'Corrected by hand' : '';
 
             const meta = document.createElement('span');
             meta.className = 'scoring-goal-meta';
@@ -907,16 +909,14 @@ function renderScoring(scoresheet) {
             const actions = document.createElement('span');
             actions.className = 'scoring-goal-actions';
             actions.append(toggle);
-            // Goals entered by hand can be changed; scoresheet goals are
-            // corrected on the scoresheet.
-            if (goal.manual) {
-                const edit = document.createElement('button');
-                edit.type = 'button';
-                edit.className = 'advanced-button scoresheet-small-button';
-                edit.textContent = 'Edit';
-                edit.addEventListener('click', () => openGoalEntry(side, goal));
-                actions.append(edit);
-            }
+            // Goals entered by hand can be changed, and scoresheet goals
+            // corrected (e.g. assists missing from the scoresheet).
+            const edit = document.createElement('button');
+            edit.type = 'button';
+            edit.className = 'advanced-button scoresheet-small-button';
+            edit.textContent = 'Edit';
+            edit.addEventListener('click', () => openGoalEntry(side, goal));
+            actions.append(edit);
 
             row.append(meta, text, actions);
             return row;
@@ -978,13 +978,16 @@ function renderPeriodSummary(select, side, scoresheet) {
 // The goal-entry dialog, for entering a goal by hand when the scoresheet
 // isn't being updated, or changing one entered by hand. Opened from a team's
 // Scoring section; `goal` is the goal being edited, or undefined for a new one.
+// A scoresheet goal is corrected rather than changed: Revert goes back to
+// the scoresheet's version.
 let goalEntryTarget = null;
 
 function openGoalEntry(side, goal) {
     const scoresheet = latestState.scoresheet || {};
     const values = goal ? goal.entry : ((scoresheet.entry_defaults || {})[side] || {});
     const teamName = document.getElementById(`${side}-team`).value.trim() || (side === 'left' ? 'Left' : 'Right');
-    goalEntryTarget = { side, goalId: goal ? goal.id : null };
+    const fromScoresheet = Boolean(goal && !goal.manual);
+    goalEntryTarget = { side, goalId: goal ? goal.id : null, fromScoresheet };
     document.getElementById('goal-entry-title').textContent = `${teamName} goal`;
     document.getElementById('goal-entry-period').value = values.period || 1;
     document.getElementById('goal-entry-clock').value = values.clock || '';
@@ -994,7 +997,11 @@ function openGoalEntry(side, goal) {
     document.getElementById('goal-entry-assist-2').value = assists[1] || '';
     document.getElementById('goal-entry-strength').value = values.strength || 'even';
     document.getElementById('goal-entry-empty-net').checked = Boolean(values.empty_net);
-    document.getElementById('goal-entry-delete').hidden = !goal;
+    const remove = document.getElementById('goal-entry-delete');
+    remove.textContent = fromScoresheet ? 'Revert' : 'Delete';
+    remove.title = fromScoresheet ? "Go back to the scoresheet's version of this goal" : '';
+    // A scoresheet goal can only be reverted once it's been corrected.
+    remove.hidden = !goal || (fromScoresheet && !goal.edited);
     document.getElementById('goal-entry-error').textContent = '';
     // Typing a number offers the matching roster player.
     const roster = (scoresheet.rosters || {})[side] || [];
@@ -1038,7 +1045,9 @@ async function saveGoalEntry(event) {
         strength: document.getElementById('goal-entry-strength').value,
         empty_net: document.getElementById('goal-entry-empty-net').checked
     };
-    if (goalEntryTarget.goalId) {
+    if (goalEntryTarget.fromScoresheet) {
+        await sendGoalEntry('PUT', `/api/scoresheet/goals/${encodeURIComponent(goalEntryTarget.goalId)}`, data);
+    } else if (goalEntryTarget.goalId) {
         await sendGoalEntry('PUT', `/api/scoresheet/manual-goals/${encodeURIComponent(goalEntryTarget.goalId)}`, data);
     } else {
         await sendGoalEntry('POST', '/api/scoresheet/manual-goals', data);
@@ -1046,10 +1055,19 @@ async function saveGoalEntry(event) {
 }
 
 async function deleteGoalEntry() {
-    if (!goalEntryTarget || !goalEntryTarget.goalId || !window.confirm('Delete this goal?')) {
+    if (!goalEntryTarget || !goalEntryTarget.goalId) {
         return;
     }
-    await sendGoalEntry('DELETE', `/api/scoresheet/manual-goals/${encodeURIComponent(goalEntryTarget.goalId)}`);
+    const goalId = encodeURIComponent(goalEntryTarget.goalId);
+    if (goalEntryTarget.fromScoresheet) {
+        if (window.confirm("Undo the changes and go back to the scoresheet's version of this goal?")) {
+            await sendGoalEntry('DELETE', `/api/scoresheet/goals/${goalId}`);
+        }
+        return;
+    }
+    if (window.confirm('Delete this goal?')) {
+        await sendGoalEntry('DELETE', `/api/scoresheet/manual-goals/${goalId}`);
+    }
 }
 
 // The scoresheet controls are only rendered when scoresheet_url is configured.

@@ -22,7 +22,7 @@ from .feed import (
     Strength,
 )
 from . import gamesheetstats, mock
-from .manual import ManualGoal, ManualGoals, player_text
+from .manual import GoalOverrides, ManualGoal, ManualGoals, player_text
 from .mock import is_mock_game
 
 

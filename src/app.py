@@ -24,7 +24,7 @@ from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from penalties import PenaltyStateMachine, PenaltyType, Team
-from scoresheets import GameNotStarted, GoalChangeKind, ManualGoals, ScoresheetError, is_mock_game, open_feed, player_text
+from scoresheets import GoalOverrides, GameNotStarted, GoalChangeKind, ManualGoals, ScoresheetError, is_mock_game, open_feed, player_text
 from goal_captions import Teams
 
 # Load config
@@ -151,7 +151,10 @@ scoresheet_new_goal_fast_seconds = 15
 scoresheet_finished_poll_seconds = 60
 goal_overlay_seconds = float(config.get('goal_overlay_seconds', 10))
 scoresheet = {
+    # The goals with any corrections entered by hand; 'feed_goals' as the
+    # scoresheet has them.
     'goals': [],
+    'feed_goals': [],
     'settled': set(),
     'game_over': False,
     'error': '',
@@ -171,6 +174,9 @@ scoresheet = {
 # scoresheet goal that turns up later replaces its manual goal. Guarded by
 # state_lock. Holds players' names too, so don't save or log it.
 manual_goals = ManualGoals()
+# Corrections entered in the UI for scoresheet goals (e.g. missing assists),
+# used until the scoresheet changes the goal. Guarded by state_lock.
+goal_overrides = GoalOverrides()
 # The goal-entry form's defaults for each side (period, time, strength, EN),
 # taken when its score "+" is pressed, as the penalty and EN state change
 # right after. None means use the current game state.
@@ -1817,9 +1823,11 @@ def current_scoresheet_payload():
             settled=goal_is_settled(goal.id),
             side=scoring_side(goal, side_teams),
             manual=manual,
+            # A scoresheet goal corrected by hand.
+            edited=not manual and goal_overrides.has(goal.id),
+            # The entry form's fields, for editing it.
+            entry=manual_goal_entry(goal),
         )
-        if manual:
-            entry['entry'] = manual_goal_entry(goal)
         goals.append(entry)
     rosters = {}
     entry_defaults = {}
@@ -1882,7 +1890,8 @@ def poll_scoresheet(feed):
         # Epoch seconds; the UI shows it in the browser's time zone.
         scoresheet['checked_at'] = time.time()
         if changes is not None:
-            scoresheet['goals'] = feed.goals
+            scoresheet['feed_goals'] = feed.goals
+            scoresheet['goals'] = goal_overrides.apply(feed.goals)
             scoresheet['settled'] = {goal.id for goal in feed.goals if feed.is_settled(goal.id)}
             changed = changed or bool(changes) or feed.game_over != scoresheet['game_over']
             scoresheet['game_over'] = feed.game_over
@@ -2217,6 +2226,30 @@ def show_scoresheet_goal(goal_id):
         if scoresheet_goal(goal_id) is None:
             return jsonify({'error': 'no such goal'}), 404
         show_goal_caption(goal_id)
+        updated_state = current_state_payload()
+    write_overlay_text()
+    socketio.emit('state_updated', updated_state)
+    return jsonify(updated_state)
+
+@app.route('/api/scoresheet/goals/<goal_id>', methods=['PUT', 'DELETE'])
+def edit_scoresheet_goal(goal_id):
+    # PUT corrects a scoresheet goal by hand; DELETE goes back to the
+    # scoresheet's version of it.
+    data = request.get_json(silent=True) or {}
+    with state_lock:
+        goal = next((goal for goal in scoresheet['feed_goals'] if goal.id == goal_id), None)
+        if goal is None:
+            return jsonify({'error': 'no such scoresheet goal'}), 404
+        if request.method == 'DELETE':
+            goal_overrides.remove(goal_id)
+        else:
+            try:
+                goal_overrides.set(goal, data)
+            except ValueError as e:
+                return jsonify({'error': str(e)}), 400
+        scoresheet['goals'] = goal_overrides.apply(scoresheet['feed_goals'])
+        action = 'reverted' if request.method == 'DELETE' else 'corrected by hand'
+        print(f"Scoresheet goal {action}: {goal_id}", flush=True)
         updated_state = current_state_payload()
     write_overlay_text()
     socketio.emit('state_updated', updated_state)

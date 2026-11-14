@@ -2,7 +2,7 @@ import unittest
 
 from src.goal_captions import Teams
 from src.scoresheets import Goal, Player, Strength
-from src.scoresheets.manual import ManualGoals, parse_clock, parse_player, player_text
+from src.scoresheets.manual import GoalOverrides, ManualGoals, parse_clock, parse_player, player_text
 
 TEAMS = Teams({'Home Testers': {'roster': [{17: 'MacTestface'}, {4: 'Fakerson'}]}})
 
@@ -132,6 +132,52 @@ class ManualGoalCaptionTests(unittest.TestCase):
     def test_list_roster(self):
         self.assertEqual(TEAMS.roster('Home Testers'), {'17': 'MacTestface', '4': 'Fakerson'})
         self.assertEqual(TEAMS.roster('Nobody'), {})
+
+
+class GoalOverridesTests(unittest.TestCase):
+    def setUp(self):
+        self.overrides = GoalOverrides()
+        self.goal = scoresheet_goal(Player('17', 'TESTY', 'MACTESTFACE'))
+
+    def test_correction_replaces_the_scoresheets_goal(self):
+        self.overrides.set(self.goal, entry(period=3, clock='5:01', scorer='4', assists=['17', '', '9 McFake'],
+                                            strength='pp', empty_net=True))
+        goal, = self.overrides.apply([self.goal])
+        self.assertTrue(self.overrides.has('sheet-1'))
+        self.assertEqual(goal, Goal('sheet-1', 3, '05:01', 'home', Player('4', '', ''),
+                                    (Player('17', '', ''), Player('9', 'McFake', '')), Strength.POWER_PLAY, True))
+        self.assertEqual(TEAMS.caption(goal, 'Home Testers'), 'Home Testers Goal: Fakerson (MacTestface, McFake) PP EN')
+
+    def test_other_goals_are_unchanged(self):
+        self.overrides.set(self.goal, entry())
+        other = Goal('sheet-2', 3, '01:00', 'home', self.goal.scorer, (), Strength.EVEN, False)
+        self.assertIs(self.overrides.apply([self.goal, other])[1], other)
+
+    def test_no_assists_is_unassisted(self):
+        self.goal = Goal('sheet-1', 2, '12:20', 'home', self.goal.scorer, (Player('4', '', ''),), Strength.EVEN, False)
+        self.overrides.set(self.goal, entry(assists=['', ' ']))
+        self.assertEqual(self.overrides.apply([self.goal])[0].assists, ())
+
+    def test_remove_goes_back_to_the_scoresheets(self):
+        self.overrides.set(self.goal, entry())
+        self.assertTrue(self.overrides.remove('sheet-1'))
+        self.assertFalse(self.overrides.remove('sheet-1'))
+        self.assertEqual(self.overrides.apply([self.goal]), [self.goal])
+
+    def test_dropped_once_the_scoresheet_changes_the_goal(self):
+        self.overrides.set(self.goal, entry(assists=['4', '9']))
+        updated = Goal('sheet-1', 2, '12:20', 'home', self.goal.scorer,
+                       (Player('4', 'FAKE', 'FAKERSON'),), Strength.EVEN, False)
+        self.assertEqual(self.overrides.apply([updated]), [updated])
+        self.assertFalse(self.overrides.has('sheet-1'))
+        # Even if the scoresheet goes back to what it had.
+        self.assertEqual(self.overrides.apply([self.goal]), [self.goal])
+
+    def test_bad_fields(self):
+        for bad in (entry(assists=['4', '9', '11']), entry(clock='12'), entry(scorer=''), entry(strength='x')):
+            with self.assertRaises(ValueError):
+                self.overrides.set(self.goal, bad)
+        self.assertFalse(self.overrides.has('sheet-1'))
 
 
 if __name__ == '__main__':

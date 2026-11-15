@@ -150,6 +150,8 @@ class Teams:
         return {
             'scorer': self.player_name(goal.scorer, team_name),
             'assists': [self.player_name(assist, team_name) for assist in goal.assists],
+            # There were assists that weren't caught, so it isn't unassisted.
+            'assists_unknown': bool(getattr(goal, 'assists_unknown', False)),
             'tags': tags,
         }
 
@@ -157,14 +159,20 @@ class Teams:
         """Who scored a goal by ``team_name``: "MacTestface (Fakerson, ...) PP".
 
         Until the goal has settled, more assists may be on the way, so they
-        end in "...".
+        end in "...". A goal whose assists weren't all caught (entered by
+        hand) is never "unassisted": the assists that are known end in
+        "...", and with none known there's no assist text at all.
         """
         description = self.describe(goal, team_name)
         assists = description['assists']
-        if not settled and len(assists) < MAX_ASSISTS:
+        unknown = description['assists_unknown']
+        if (unknown or not settled) and len(assists) < MAX_ASSISTS:
             assists = assists + ['...']
-        assist_text = ', '.join(assists) or 'unassisted'
-        return ' '.join([f'{description["scorer"]} ({assist_text})'] + description['tags'])
+        if unknown and not description['assists']:
+            scorer_text = description['scorer']
+        else:
+            scorer_text = f'{description["scorer"]} ({", ".join(assists) or "unassisted"})'
+        return ' '.join([scorer_text] + description['tags'])
 
     def caption(self, goal, team_name: str, settled: bool = True) -> str:
         """The one-line overlay caption for a goal by ``team_name``:

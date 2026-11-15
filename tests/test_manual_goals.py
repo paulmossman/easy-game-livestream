@@ -129,6 +129,18 @@ class ManualGoalCaptionTests(unittest.TestCase):
         goal = ManualGoals().add('Visiting Fakes', entry(scorer='22 McFake', assists=[]))
         self.assertEqual(TEAMS.caption(goal, 'Visiting Fakes'), 'Visiting Fakes Goal: McFake (unassisted)')
 
+    def test_assists_unknown_is_not_unassisted(self):
+        goals = ManualGoals()
+        none_known = goals.add('Home Testers', entry(assists=[], assists_unknown=True, strength='pp'))
+        self.assertEqual(TEAMS.caption(none_known, 'Home Testers'), 'Home Testers Goal: MacTestface PP')
+        one_known = goals.add('Home Testers', entry(assists=['4'], assists_unknown=True))
+        self.assertEqual(TEAMS.caption(one_known, 'Home Testers'), 'Home Testers Goal: MacTestface (Fakerson, ...)')
+
+    def test_assists_unknown_is_ignored_with_both_assists(self):
+        goal = ManualGoals().add('Home Testers', entry(assists=['4', '9'], assists_unknown=True))
+        self.assertFalse(goal.assists_unknown)
+        self.assertEqual(TEAMS.caption(goal, 'Home Testers'), 'Home Testers Goal: MacTestface (Fakerson, #9)')
+
     def test_list_roster(self):
         self.assertEqual(TEAMS.roster('Home Testers'), {'17': 'MacTestface', '4': 'Fakerson'})
         self.assertEqual(TEAMS.roster('Nobody'), {})
@@ -157,6 +169,12 @@ class GoalOverridesTests(unittest.TestCase):
         self.goal = Goal('sheet-1', 2, '12:20', 'home', self.goal.scorer, (Player('4', '', ''),), Strength.EVEN, False)
         self.overrides.set(self.goal, entry(assists=['', ' ']))
         self.assertEqual(self.overrides.apply([self.goal])[0].assists, ())
+
+    def test_assists_unknown(self):
+        self.overrides.set(self.goal, entry(assists=[], assists_unknown=True))
+        goal, = self.overrides.apply([self.goal])
+        self.assertTrue(goal.assists_unknown)
+        self.assertEqual(TEAMS.caption(goal, 'Home Testers'), 'Home Testers Goal: MacTestface')
 
     def test_remove_goes_back_to_the_scoresheets(self):
         self.overrides.set(self.goal, entry())

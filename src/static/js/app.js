@@ -851,11 +851,17 @@ function renderState(state) {
     muteToggleButton.classList.toggle('is-hidden', Boolean(state.mute_on_stop));
 }
 
-// Matches the overlay caption: until the goal settles, more assists may be
-// on the way, so they end in "...".
-function goalAssistsText(goal) {
-    const assists = !goal.settled && goal.assists.length < 2 ? [...goal.assists, '...'] : goal.assists;
-    return assists.length ? assists.join(', ') : 'unassisted';
+// Matches the overlay caption (goal_text): until the goal settles, more
+// assists may be on the way, so they end in "...". A goal whose assists
+// weren't all caught is never "unassisted": with none known, it has no
+// assist text.
+function goalScorerText(goal) {
+    const more = (goal.assists_unknown || !goal.settled) && goal.assists.length < 2;
+    const assists = more ? [...goal.assists, '...'] : goal.assists;
+    if (goal.assists_unknown && !goal.assists.length) {
+        return goal.scorer;
+    }
+    return `${goal.scorer} (${assists.length ? assists.join(', ') : 'unassisted'})`;
 }
 
 // Each team panel's Scoring section lists that team's goals, from the
@@ -895,7 +901,7 @@ function renderScoring(scoresheet) {
 
             const text = document.createElement('span');
             text.className = 'scoring-goal-text';
-            text.textContent = [`${goal.scorer} (${goalAssistsText(goal)})`, ...goal.tags].join(' ');
+            text.textContent = [goalScorerText(goal), ...goal.tags].join(' ');
 
             // Shows this goal's caption, or hides it while it's showing.
             const toggle = document.createElement('button');
@@ -995,6 +1001,7 @@ function openGoalEntry(side, goal) {
     const assists = values.assists || [];
     document.getElementById('goal-entry-assist-1').value = assists[0] || '';
     document.getElementById('goal-entry-assist-2').value = assists[1] || '';
+    document.getElementById('goal-entry-assists-unknown').checked = Boolean(values.assists_unknown);
     document.getElementById('goal-entry-strength').value = values.strength || 'even';
     document.getElementById('goal-entry-empty-net').checked = Boolean(values.empty_net);
     const remove = document.getElementById('goal-entry-delete');
@@ -1042,6 +1049,7 @@ async function saveGoalEntry(event) {
         assists: ['goal-entry-assist-1', 'goal-entry-assist-2']
             .map((id) => document.getElementById(id).value.trim())
             .filter(Boolean),
+        assists_unknown: document.getElementById('goal-entry-assists-unknown').checked,
         strength: document.getElementById('goal-entry-strength').value,
         empty_net: document.getElementById('goal-entry-empty-net').checked
     };

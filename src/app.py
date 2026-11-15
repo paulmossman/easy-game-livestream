@@ -1781,6 +1781,7 @@ def manual_goal_entry(goal, team_name=None, manual=True):
         'clock': goal.clock,
         'scorer': goal_entry_player(goal.scorer, team_name, manual),
         'assists': [goal_entry_player(assist, team_name, manual) for assist in goal.assists],
+        'assists_unknown': bool(getattr(goal, 'assists_unknown', False)),
         'strength': manual_strength_values[goal.strength.value],
         'empty_net': goal.empty_net,
     }

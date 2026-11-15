@@ -48,6 +48,8 @@ class ManualGoal:
     assists: Tuple[Player, ...]
     strength: Strength
     empty_net: bool
+    # There were assists (or more of them) that weren't caught.
+    assists_unknown: bool = False
 
 
 def parse_player(text) -> Player:
@@ -112,6 +114,7 @@ def _parse(goal_id: str, team_name: str, data: dict) -> ManualGoal:
         assists=assists,
         strength=strength,
         empty_net=bool(data.get('empty_net')),
+        assists_unknown=bool(data.get('assists_unknown')) and len(assists) < MAX_ASSISTS,
     )
 
 
@@ -140,7 +143,8 @@ class ManualGoals:
 
     def add(self, team_name: str, data: dict) -> ManualGoal:
         """Adds a goal from the entry form's fields: period, clock, scorer,
-        assists, strength ("even", "pp", "shg") and empty_net.
+        assists, assists_unknown, strength ("even", "pp", "shg") and
+        empty_net.
 
         Raises ``ValueError`` for a field that can't be used.
         """
@@ -185,7 +189,8 @@ class GoalOverrides:
     """Corrections entered by hand for scoresheet goals, by goal ID.
 
     A correction replaces everything the entry form has (period, clock,
-    scorer, assists, strength, empty net); the goal keeps its ID and team.
+    scorer, assists, assists unknown, strength, empty net); the goal keeps
+    its ID and team.
     Each is kept with the scoresheet's goal as it was when entered. Once the
     scoresheet changes the goal, it has caught up, and the correction is
     dropped.
@@ -210,6 +215,7 @@ class GoalOverrides:
             assists=fields.assists,
             strength=fields.strength,
             empty_net=fields.empty_net,
+            assists_unknown=fields.assists_unknown,
         )
         self._overrides[goal.id] = (goal, corrected)
 

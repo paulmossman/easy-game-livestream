@@ -49,6 +49,9 @@ class Goal:
     assists: Tuple[Player, ...]
     strength: Strength
     empty_net: bool
+    # Set by hand when the goal had assists that weren't caught: captions
+    # don't call it unassisted. Scoresheets never set it.
+    assists_unknown: bool = False
 
 
 class GoalChangeKind(str, Enum):

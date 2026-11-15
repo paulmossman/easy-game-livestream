@@ -1204,6 +1204,9 @@ def youtube_title_for_today(left_team=None, right_team=None):
         with state_lock:
             left_team = left_team or state.get('left_team') or 'Left'
             right_team = right_team or state.get('right_team') or 'Right'
+    # A team in the config with a full_name gets it in the title.
+    left_team = goal_teams.full_name(left_team)
+    right_team = goal_teams.full_name(right_team)
     title_timezone = ZoneInfo(os.getenv('TZ'))
     return f"{left_team} vs {right_team} - {datetime.now(title_timezone).date().isoformat()}"
 

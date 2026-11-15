@@ -105,6 +105,14 @@ class TeamsConfigTests(unittest.TestCase):
         self.assertEqual(teams.overlay_name('left'), 'Visiting Fakes')
         self.assertEqual(teams.overlay_name('right'), 'Home Testers')
 
+    def test_full_name_defaults_to_the_name(self):
+        teams = Teams([{'name': 'Testers', 'full_name': 'Testville Junior Testers'}, {'name': 'Fakes', 'full_name': ' '}])
+        self.assertEqual(teams.full_name('Testers'), 'Testville Junior Testers')
+        self.assertEqual(teams.full_name('Fakes'), 'Fakes')
+        # A name typed in the UI that isn't in the config.
+        self.assertEqual(teams.full_name('Renamed Testers'), 'Renamed Testers')
+        self.assertEqual(teams.overlay_name('left'), 'Testers')
+
     def test_one_team(self):
         teams = Teams([{'name': 'Home Testers', 'overlay_position': 'right'}])
         self.assertIsNone(teams.overlay_name('left'))

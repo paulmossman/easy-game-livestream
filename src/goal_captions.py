@@ -51,8 +51,9 @@ def _roster_items(roster):
 
 class Teams:
     """The ``teams`` config: a list of the game's two teams, each with a
-    ``name``, ``overlay_position`` ("left" or "right"), roster ({jersey:
-    display text}), Celebrate, and scoresheet side.
+    ``name`` (shown on the overlay), ``full_name`` (for the YouTube title),
+    ``overlay_position`` ("left" or "right"), roster ({jersey: display
+    text}), Celebrate, and scoresheet side.
 
     ``overlay_position`` and ``scoresheet`` only need to be set for one
     team: the other team gets the other one. Without ``overlay_position``,
@@ -69,6 +70,8 @@ class Teams:
         self._sides: Dict[str, str] = {}
         # Overlay position ("left", "right") -> team name.
         self._positions: Dict[str, str] = {}
+        # Team name -> its full name, for the YouTube title.
+        self._full_names: Dict[str, str] = {}
         self.warnings: List[str] = []
         unplaced = []
         for settings in self._team_entries(teams_config):
@@ -98,6 +101,9 @@ class Teams:
             }
             if 'celebrate' in settings:
                 self._celebrate[name] = bool(settings['celebrate'])
+            full_name = str(settings.get('full_name') or '').strip()
+            if full_name:
+                self._full_names[name] = full_name
         for name in unplaced:
             position = next(position for position in OVERLAY_POSITIONS if position not in self._positions)
             self._positions[position] = name
@@ -121,6 +127,11 @@ class Teams:
             else:
                 entries.append(dict(settings, name=name))
         return entries
+
+    def full_name(self, team_name: str) -> str:
+        """The team's ``full_name`` for the YouTube title, or the name
+        itself for a team without one (or not in the config)."""
+        return self._full_names.get(team_name, team_name)
 
     def overlay_name(self, position: str) -> Optional[str]:
         """The team the config puts at an overlay position ("left" or

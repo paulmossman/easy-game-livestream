@@ -1001,7 +1001,8 @@ function openGoalEntry(side, goal) {
     const assists = values.assists || [];
     document.getElementById('goal-entry-assist-1').value = assists[0] || '';
     document.getElementById('goal-entry-assist-2').value = assists[1] || '';
-    document.getElementById('goal-entry-assists-unknown').checked = Boolean(values.assists_unknown);
+    // A new goal's assists are unknown until one is entered.
+    document.getElementById('goal-entry-assists-unknown').checked = goal ? Boolean(values.assists_unknown) : true;
     document.getElementById('goal-entry-strength').value = values.strength || 'even';
     document.getElementById('goal-entry-empty-net').checked = Boolean(values.empty_net);
     const remove = document.getElementById('goal-entry-delete');
@@ -1567,6 +1568,16 @@ document.querySelectorAll('.scoring-add').forEach((button) => {
 });
 document.getElementById('goal-entry-form').addEventListener('submit', saveGoalEntry);
 document.getElementById('goal-entry-delete').addEventListener('click', deleteGoalEntry);
+// Entering an assist means the assists are known (it can be ticked again).
+// Only once the assist is committed (`change` fires when the field loses
+// focus with a new value), so a field left blank changes nothing.
+['goal-entry-assist-1', 'goal-entry-assist-2'].forEach((id) => {
+    document.getElementById(id).addEventListener('change', (event) => {
+        if (event.target.value.trim()) {
+            document.getElementById('goal-entry-assists-unknown').checked = false;
+        }
+    });
+});
 document.getElementById('goal-entry-close').addEventListener('click', () => {
     document.getElementById('goal-entry-dialog').close();
 });

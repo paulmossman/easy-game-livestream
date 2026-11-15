@@ -255,21 +255,52 @@ runtime_youtube_destination = {
     'stream_key': None,
     'ingestion_address': None,
 }
-youtube_resolutions = ('240p', '360p', '480p', '720p', '1080p', '1440p', '2160p')
+# No 1440p or 2160p: the broadcast's ultraLow latency preference doesn't
+# support them.
+youtube_resolutions = ('240p', '360p', '480p', '720p', '1080p')
+
+default_youtube_max_height = 1080
+
+def parse_youtube_max_height(value):
+    # "1080p" -> 1080, or None if it isn't one of youtube_resolutions.
+    return int(value[:-1]) if value in youtube_resolutions else None
+
+def parse_youtube_max_bitrate_kbps(value):
+    # "3000k" or "2.5M" -> kbps, as FFmpeg reads them. A bare number is bits
+    # per second. FFmpeg reads a lowercase m as milli, so only K and M are
+    # allowed. Returns None if the value isn't valid.
+    match = re.fullmatch(r'([0-9]+(?:\.[0-9]+)?)([kKM]?)', str(value).strip())
+    if not match:
+        return None
+    kbps = round(float(match.group(1)) * {'': 0.001, 'k': 1, 'K': 1, 'M': 1000}[match.group(2)])
+    return kbps if kbps > 0 else None
 
 def configured_youtube_max_height():
     value = config.get('youtube_max_resolution')
-    if value in youtube_resolutions:
-        return int(value[:-1])
-    if value is not None:
+    height = parse_youtube_max_height(value)
+    if height is None and value is not None:
         print(f"Ignoring invalid youtube_max_resolution: {value!r}", flush=True)
-    return 2160
+    return height or default_youtube_max_height
 
+def configured_youtube_max_bitrate_kbps():
+    value = config.get('youtube_max_bitrate')
+    if value is None or not str(value).strip():
+        return None
+    kbps = parse_youtube_max_bitrate_kbps(value)
+    if kbps is None:
+        print(f"Ignoring invalid youtube_max_bitrate: {value!r}", flush=True)
+    return kbps
+
+# The caps on the program feed, which the relay copies to YouTube. They start
+# from the config and can be changed from the UI (set_youtube_output_limits),
+# which restarts the overlay FFmpeg. Changed under process_lock.
 youtube_max_height = configured_youtube_max_height()
-# What "Create New Stream" declares to YouTube. The relay copies the video
-# as-is, so this isn't necessarily what is actually sent.
-youtube_stream_resolution = f'{min(720, youtube_max_height)}p'
-youtube_stream_frame_rate = '30fps'
+youtube_max_bitrate_kbps = configured_youtube_max_bitrate_kbps()
+# "Create New Stream" lets YouTube detect the resolution and frame rate,
+# because the API can't change them once the stream exists, and they change
+# with the caps above and the incoming stream.
+youtube_stream_resolution = 'variable'
+youtube_stream_frame_rate = 'variable'
 inactive_youtube_broadcast_statuses = {'complete', 'deleted'}
 deletable_youtube_broadcast_statuses = {'created', 'ready'}
 primary_font_path = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'
@@ -742,14 +773,38 @@ def program_video_rate_options():
     # Caps the program feed, which the relay copies to YouTube. Without a cap
     # x264 aims for quality, and busy pictures spike the bitrate. A buffer of
     # one second's worth keeps it near the cap even over short spans.
-    max_bitrate = str(config.get('youtube_max_bitrate') or '').strip()
-    if not max_bitrate:
+    if not youtube_max_bitrate_kbps:
         return []
-    # FFmpeg reads a lowercase m as milli, so only K and M are allowed.
-    if not re.fullmatch(r'[0-9]+(\.[0-9]+)?[kKM]?', max_bitrate):
-        print(f"Ignoring invalid youtube_max_bitrate: {max_bitrate!r}", flush=True)
-        return []
+    max_bitrate = f'{youtube_max_bitrate_kbps}k'
     return ['-maxrate', max_bitrate, '-bufsize', max_bitrate]
+
+def set_youtube_output_limits(max_height, max_bitrate_kbps):
+    # Restarts the overlay FFmpeg (and with it the relay) when the stream is
+    # running, since the caps are part of its x264 encode and filter graph.
+    # Returns whether it's restarting.
+    global youtube_max_height, youtube_max_bitrate_kbps
+    with process_lock:
+        if (max_height, max_bitrate_kbps) == (youtube_max_height, youtube_max_bitrate_kbps):
+            return False
+        youtube_max_height = max_height
+        youtube_max_bitrate_kbps = max_bitrate_kbps
+        bitrate_text = f'{max_bitrate_kbps}k' if max_bitrate_kbps else 'uncapped'
+        print(f"YouTube output limits: {max_height}p, {bitrate_text}", flush=True)
+        restarting = is_ffmpeg_running()
+    if restarting:
+        threading.Thread(target=restart_ffmpeg_for_output_limits, daemon=True).start()
+    socketio.emit('state_updated', current_state_payload())
+    return restarting
+
+def restart_ffmpeg_for_output_limits():
+    # run_ffmpeg stops the running FFmpeg and relay first. The incoming
+    # stream hasn't changed, so it isn't probed again.
+    with process_lock:
+        if not is_ffmpeg_running():
+            return
+        print("Restarting FFmpeg for the new YouTube output limits", flush=True)
+        run_ffmpeg(probe=False)
+    socketio.emit('state_updated', current_state_payload())
 
 def program_scale_filter(input_label, output_label):
     # Caps the shorter side of the program feed, like resolution_label, and
@@ -851,8 +906,14 @@ def current_state_payload():
         'incoming': {'resolution': resolution_label(incoming_video_resolution), 'fps': incoming_video_frame_rate},
         'outgoing': {
             'resolution': resolution_label(incoming_video_resolution, youtube_max_height) if relay_running else None,
-            'fps': youtube_stream_frame_rate.replace('fps', '') if relay_running else None,
+            # The relay copies the video, so its frame rate is the incoming one.
+            'fps': incoming_video_frame_rate if relay_running else None,
         },
+        'limits': {
+            'resolution': f'{youtube_max_height}p',
+            'bitrate_kbps': youtube_max_bitrate_kbps,
+        },
+        'encoder_running': is_ffmpeg_running(),
     }
     return payload
 
@@ -1335,7 +1396,10 @@ def create_youtube_broadcast_for_channel(channel_id, left_team=None, right_team=
             },
             'contentDetails': {
                 'enableAutoStart': True,
-                'enableAutoStop': True,
+                # Not auto-stopped, so the stream can drop out (phone, network
+                # or an app restart) and reconnect without YouTube ending the
+                # broadcast. End it with the Stop Stream page.
+                'enableAutoStop': False,
                 'latencyPreference': latency,
             },
         },
@@ -1559,6 +1623,19 @@ def mediamtx_path_ready(stream_path):
         last_stream_ready_state = False
     return False
 
+def mediamtx_ready_source_id(stream_path):
+    # The id of the connection publishing to stream_path, or None if the path
+    # isn't ready. Doesn't log, unlike mediamtx_path_ready.
+    try:
+        with urllib.request.urlopen(mediamtx_api_url, timeout=2) as response:
+            payload = json.load(response)
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError):
+        return None
+    for item in payload.get('items') or []:
+        if item and item.get('name') == stream_path and item.get('ready'):
+            return (item.get('source') or {}).get('id') or ''
+    return None
+
 def is_stream_ready():
     return mediamtx_path_ready(current_stream_path())
 
@@ -1655,16 +1732,44 @@ def render_overlay_preview_jpeg():
         raise RuntimeError(result.stderr.decode('utf-8', errors='replace').strip() or 'no output')
     return result.stdout
 
-def run_ffmpeg():
+def mediamtx_output_path(output_url):
+    # The MediaMTX path FFmpeg publishes output_url to, or None if it isn't
+    # published to MediaMTX (a custom program_output_url).
+    return stream_path_from_url(output_url) if output_url.startswith('rtmp://mediamtx/') else None
+
+def wait_for_ffmpeg_output(process, output_url, previous_source_id, timeout_seconds=10):
+    # Returns once this FFmpeg is publishing to output_url in MediaMTX, so
+    # the relay can start straight away, or after timeout_seconds. A ready
+    # path with previous_source_id is the FFmpeg that was just stopped, not
+    # yet cleared. Without a MediaMTX path to watch, waits the whole timeout,
+    # as a fixed wait did. Returns False if FFmpeg exited first.
+    stream_path = mediamtx_output_path(output_url)
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        if process.poll() is not None:
+            return False
+        if stream_path:
+            source_id = mediamtx_ready_source_id(stream_path)
+            if source_id is not None and source_id != previous_source_id:
+                return True
+        time.sleep(0.2)
+    return process.poll() is None
+
+def run_ffmpeg(probe=True):
+    # probe=False reuses the incoming resolution from the last start, when
+    # only the YouTube output limits changed, which saves ~2 s of ffprobe.
     global ffmpeg_process, ffmpeg_ready, sent_celebrate_y
     input_url = current_input_url()
     program_output_url = current_program_output_url()
     webrtc_output_url = current_webrtc_preview_output_url()
     
     try:
+        program_path = mediamtx_output_path(program_output_url)
+        previous_source_id = mediamtx_ready_source_id(program_path) if program_path else None
         stop_ffmpeg()
         ffmpeg_ready = False
-        set_incoming_video_format(*probe_video_format(input_url))
+        if probe or incoming_video_resolution is None:
+            set_incoming_video_format(*probe_video_format(input_url))
         layout = overlay_layout(incoming_video_resolution)
         write_overlay_text(force=True)
         sent_penalty_x_expressions.clear()
@@ -1728,12 +1833,14 @@ def run_ffmpeg():
             text=True,
         )
         
-        time.sleep(5)
+        started_at = time.monotonic()
+        wait_for_ffmpeg_output(ffmpeg_process, program_output_url, previous_source_id)
         if ffmpeg_process.poll() is not None:
             print(f"FFmpeg exited early with code {ffmpeg_process.returncode}", flush=True)
             cleanup_ffmpeg()
             return
 
+        print(f"FFmpeg program feed ready after {time.monotonic() - started_at:.1f} s", flush=True)
         threading.Thread(target=watch_ffmpeg, args=(ffmpeg_process,), daemon=True).start()
         start_relay_ffmpeg()
     except Exception as e:
@@ -2524,6 +2631,24 @@ def youtube_stop_stream():
         return jsonify({'error': str(e)}), 500
 
     return jsonify(stopped)
+
+@app.route('/api/stream/output-limits', methods=['POST'])
+def update_stream_output_limits():
+    # {"resolution": "720p", "bitrate_kbps": 3000}; a null or 0 bitrate is
+    # uncapped. Lasts until the app restarts; the config isn't changed.
+    data = request.get_json(silent=True) or {}
+    max_height = parse_youtube_max_height(data.get('resolution'))
+    if max_height is None:
+        return jsonify({'error': f"resolution must be one of {', '.join(youtube_resolutions)}"}), 400
+    bitrate = data.get('bitrate_kbps')
+    if bitrate in (None, '', 0):
+        max_bitrate_kbps = None
+    elif isinstance(bitrate, int) and not isinstance(bitrate, bool) and bitrate > 0:
+        max_bitrate_kbps = bitrate
+    else:
+        return jsonify({'error': 'bitrate_kbps must be a whole number of kbps, or empty for no cap'}), 400
+    restarted = set_youtube_output_limits(max_height, max_bitrate_kbps)
+    return jsonify({'restarted': restarted, 'stream_quality': current_state_payload()['stream_quality']})
 
 @app.route('/on_publish', methods=['GET', 'POST'])
 def on_publish():

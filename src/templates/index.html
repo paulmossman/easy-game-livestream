@@ -523,8 +523,68 @@
 
         .audio-copy > .status-line,
         .audio-copy > .stream-quality,
+        .audio-copy > .output-limits,
         .audio-copy > .relay-metrics {
             grid-column: 1 / -1;
+        }
+
+        .output-limits {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin-top: 4px;
+            font-size: 0.9rem;
+        }
+
+        .output-limits-values {
+            display: grid;
+            gap: 2px;
+            font-weight: 700;
+        }
+
+        .output-limits-values span {
+            font-weight: 400;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .output-limits-edit {
+            padding: 6px 14px;
+        }
+
+        .output-limits-hint,
+        .output-limits-warning {
+            margin: 0;
+            font-size: 0.9rem;
+        }
+
+        .output-limits-hint {
+            color: rgba(31, 26, 23, 0.7);
+        }
+
+        .output-limits-hint.is-warning,
+        .output-limits-warning.is-streaming {
+            color: var(--red-b);
+            font-weight: 700;
+        }
+
+        .output-limits-guide {
+            margin-top: 0;
+        }
+
+        .output-limits-guide caption {
+            padding-bottom: 4px;
+            text-align: left;
+            font-weight: 700;
+        }
+
+        .output-limits-guide tr.is-selected {
+            background: rgba(31, 26, 23, 0.08);
+            font-weight: 800;
+        }
+
+        .goal-entry-actions .advanced-button:disabled {
+            cursor: default;
+            opacity: 0.5;
         }
 
         .stream-quality {
@@ -1492,6 +1552,13 @@
                                 </tr>
                             </tbody>
                         </table>
+                        <div class="output-limits" title="Caps on the video sent to YouTube">
+                            <div class="output-limits-values">
+                                <div>Max resolution: <span id="output-limits-resolution">-</span></div>
+                                <div>Max bitrate: <span id="output-limits-bitrate">-</span></div>
+                            </div>
+                            <button type="button" id="output-limits-edit" class="advanced-button output-limits-edit" aria-label="Change the YouTube output limits">Settings</button>
+                        </div>
                     </div>
                     <div class="youtube-actions">
                         <button type="button" id="create-stream-button" class="youtube-button">Create New Stream</button>
@@ -1627,6 +1694,53 @@
                     <button type="button" id="goal-entry-delete" class="advanced-button">Delete</button>
                     <button type="submit" class="advanced-button goal-entry-save">Save</button>
                     <button type="button" id="goal-entry-close" class="advanced-button" aria-label="Cancel without saving">Cancel</button>
+                </div>
+            </form>
+        </dialog>
+        <dialog id="output-limits-dialog" class="preview-settings-dialog" aria-labelledby="output-limits-title">
+            <form id="output-limits-form" class="goal-entry-form" method="dialog">
+                <div class="preview-dialog-header">
+                    <h2 id="output-limits-title">YouTube output limits</h2>
+                </div>
+                <div class="goal-entry-row">
+                    <label>
+                        Max resolution
+                        <select id="output-max-resolution">
+                            <option value="240p">240p</option>
+                            <option value="360p">360p</option>
+                            <option value="480p">480p</option>
+                            <option value="720p">720p</option>
+                            <option value="1080p">1080p</option>
+                        </select>
+                    </label>
+                    <label>
+                        Max bitrate (kbps)
+                        <input id="output-max-bitrate" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="No cap" autocomplete="off" aria-describedby="output-limits-hint">
+                    </label>
+                </div>
+                <p id="output-limits-hint" class="output-limits-hint"></p>
+                <table class="stream-quality output-limits-guide">
+                    <caption>YouTube's H.264 bitrates for 30 fps</caption>
+                    <thead>
+                        <tr>
+                            <th scope="col">Resolution</th>
+                            <th scope="col">Minimum</th>
+                            <th scope="col">Recommended</th>
+                        </tr>
+                    </thead>
+                    <tbody id="output-limits-guide-body"></tbody>
+                </table>
+                <p id="output-limits-warning" class="output-limits-warning">
+                    Changing these while streaming restarts the encoder: the YouTube stream and the preview drop out for about 5 seconds, then resume.
+                    They last until the app restarts; the config file isn't changed.
+                </p>
+                <p class="output-limits-hint">
+                    YouTube takes a while to switch to a new resolution: until it does, its player keeps offering the old quality options, with the new picture scaled to fit. Create New Stream switches at once, but gives the stream a new link.
+                </p>
+                <p id="output-limits-error" class="goal-entry-error" role="alert"></p>
+                <div class="goal-entry-actions">
+                    <button type="submit" id="output-limits-ok" class="advanced-button goal-entry-save">OK</button>
+                    <button type="button" id="output-limits-cancel" class="advanced-button">Cancel</button>
                 </div>
             </form>
         </dialog>

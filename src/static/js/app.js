@@ -2,6 +2,8 @@ const socket = io();
 let youtubeChannels = [];
 let latestState = {};
 let previewHls = null;
+let previewHlsRetryTimer = null;
+const previewHlsRetryMs = 3000;
 let relayMetricSamples = [];
 let relayHealthSamples = [];
 const youtubeCreatePendingKey = 'youtube-create-pending';
@@ -36,6 +38,8 @@ function previewMode() {
 
 function teardownHlsPreview() {
     const previewVideo = document.getElementById('preview-video');
+    window.clearTimeout(previewHlsRetryTimer);
+    previewHlsRetryTimer = null;
     if (previewHls) {
         previewHls.destroy();
         previewHls = null;
@@ -52,9 +56,24 @@ function initializeHlsPreview() {
     teardownHlsPreview();
 
     if (window.Hls && window.Hls.isSupported()) {
-        previewHls = new window.Hls();
-        previewHls.loadSource(sourceUrl);
-        previewHls.attachMedia(previewVideo);
+        const hls = new window.Hls();
+        previewHls = hls;
+        // The HLS stream goes away for a few seconds whenever the encoder
+        // restarts (a new resolution or bitrate, or the phone reconnecting),
+        // and hls.js gives up on a fatal error. Start again until it's back.
+        hls.on(window.Hls.Events.ERROR, (event, data) => {
+            if (!data.fatal || previewHls !== hls || previewHlsRetryTimer) {
+                return;
+            }
+            previewHlsRetryTimer = window.setTimeout(() => {
+                previewHlsRetryTimer = null;
+                if (previewHls === hls && previewMode() === 'hls') {
+                    initializeHlsPreview();
+                }
+            }, previewHlsRetryMs);
+        });
+        hls.loadSource(sourceUrl);
+        hls.attachMedia(previewVideo);
         return;
     }
 
@@ -569,6 +588,9 @@ async function loadYouTubeStatus(recordHealthSample = false) {
     }
 
     if (data.active_destination && data.active_destination.broadcast_url) {
+        // A broadcast is already running (just created, or reconnected after
+        // a restart), so drop any create still pending from a sign-in.
+        window.sessionStorage.removeItem(youtubeCreatePendingKey);
         youtubeChannels = [];
         setYoutubeStatus(
             data.active_destination.channel_title || 'Connected',
@@ -1109,12 +1131,144 @@ async function postScoresheet(url, data) {
     }
 }
 
+// YouTube's H.264 figures for 30 fps, in kbps (as in the README).
+const youtubeBitrateGuide = {
+    '240p': { recommended: 400, minimum: 300 },
+    '360p': { recommended: 4000, minimum: 400 },
+    '480p': { recommended: 4000, minimum: 400 },
+    '720p': { recommended: 8000, minimum: 3000 },
+    '1080p': { recommended: 14000, minimum: 5000 },
+};
+let outputLimits = null;
+let outputEncoderRunning = false;
+
 function renderStreamQuality(quality) {
     ['incoming', 'outgoing'].forEach((direction) => {
         const values = quality[direction] || {};
         document.getElementById(`${direction}-resolution`).textContent = values.resolution || '-';
         document.getElementById(`${direction}-fps`).textContent = values.fps || '-';
     });
+    outputEncoderRunning = Boolean(quality.encoder_running);
+    renderOutputLimits(quality.limits);
+}
+
+function outputLimitsKey(limits) {
+    return limits ? `${limits.resolution}|${limits.bitrate_kbps || ''}` : '';
+}
+
+function renderOutputLimits(limits) {
+    // Only the read-only summary follows state updates; the dialog's fields
+    // are filled when it opens, so an edit in progress isn't overwritten.
+    if (limits) {
+        outputLimits = limits;
+    }
+    document.getElementById('output-limits-resolution').textContent = outputLimits ? outputLimits.resolution : '-';
+    document.getElementById('output-limits-bitrate').textContent = outputLimits
+        ? (outputLimits.bitrate_kbps ? `${outputLimits.bitrate_kbps} kbps` : 'No cap')
+        : '-';
+    const dialog = document.getElementById('output-limits-dialog');
+    if (dialog.open) {
+        updateOutputLimitsForm();
+    }
+}
+
+function renderOutputLimitsGuide() {
+    document.getElementById('output-limits-guide-body').replaceChildren(
+        ...Object.entries(youtubeBitrateGuide).map(([resolution, guide]) => {
+            const row = document.createElement('tr');
+            row.dataset.resolution = resolution;
+            const label = document.createElement('th');
+            label.scope = 'row';
+            label.textContent = resolution;
+            const minimum = document.createElement('td');
+            minimum.textContent = `${guide.minimum} kbps`;
+            const recommended = document.createElement('td');
+            recommended.textContent = `${guide.recommended} kbps`;
+            row.append(label, minimum, recommended);
+            return row;
+        })
+    );
+}
+
+function openOutputLimitsDialog() {
+    if (outputLimits) {
+        document.getElementById('output-max-resolution').value = outputLimits.resolution;
+        document.getElementById('output-max-bitrate').value = outputLimits.bitrate_kbps ? String(outputLimits.bitrate_kbps) : '';
+    }
+    document.getElementById('output-limits-error').textContent = '';
+    updateOutputLimitsForm();
+    document.getElementById('output-limits-dialog').showModal();
+    document.getElementById('output-max-resolution').focus();
+}
+
+function readOutputLimitsForm() {
+    const bitrateText = document.getElementById('output-max-bitrate').value.trim();
+    const bitrate = bitrateText === '' ? null : Number(bitrateText);
+    return {
+        resolution: document.getElementById('output-max-resolution').value,
+        bitrate_kbps: bitrate,
+        valid: bitrate === null || (Number.isInteger(bitrate) && bitrate > 0),
+    };
+}
+
+function updateOutputLimitsForm() {
+    const form = readOutputLimitsForm();
+    const hint = document.getElementById('output-limits-hint');
+    const guide = youtubeBitrateGuide[form.resolution];
+    // The guide table shows the figures; this only warns.
+    let warning = false;
+    if (!form.valid) {
+        hint.textContent = 'Enter the bitrate as a whole number of kbps, or leave it empty for no cap.';
+        warning = true;
+    } else if (guide && form.bitrate_kbps !== null && form.bitrate_kbps < guide.minimum) {
+        hint.textContent = `Below YouTube's ${guide.minimum} kbps minimum for ${form.resolution}, the picture will look blocky; try a lower resolution.`;
+        warning = true;
+    } else {
+        hint.textContent = 'Leave the bitrate empty for no cap.';
+    }
+    hint.classList.toggle('is-warning', warning);
+    document.querySelectorAll('#output-limits-guide-body tr').forEach((row) => {
+        row.classList.toggle('is-selected', row.dataset.resolution === form.resolution);
+    });
+    const changed = outputLimits !== null && outputLimitsKey(form) !== outputLimitsKey(outputLimits);
+    // The interruption only happens if the encoder is running.
+    document.getElementById('output-limits-warning').classList.toggle('is-streaming', outputEncoderRunning && changed);
+    document.getElementById('output-limits-ok').disabled = !form.valid;
+}
+
+async function applyOutputLimits(event) {
+    event.preventDefault();
+    const form = readOutputLimitsForm();
+    if (!form.valid) {
+        return;
+    }
+    const dialog = document.getElementById('output-limits-dialog');
+    if (outputLimits !== null && outputLimitsKey(form) === outputLimitsKey(outputLimits)) {
+        dialog.close();
+        return;
+    }
+    const button = document.getElementById('output-limits-ok');
+    const error = document.getElementById('output-limits-error');
+    button.disabled = true;
+    error.textContent = '';
+    try {
+        const response = await fetch('/api/stream/output-limits', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ resolution: form.resolution, bitrate_kbps: form.bitrate_kbps }),
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            error.textContent = result.error || `Not changed (${response.status})`;
+            return;
+        }
+        dialog.close();
+        renderStreamQuality(result.stream_quality || {});
+    } catch (requestError) {
+        error.textContent = `Not changed: ${requestError.message}`;
+    } finally {
+        updateOutputLimitsForm();
+    }
 }
 
 async function postState(data) {
@@ -1535,6 +1689,14 @@ document.getElementById('message-text').addEventListener('blur', submitOverlayUp
 });
 document.getElementById('mute-toggle-button').addEventListener('click', toggleMute);
 document.getElementById('create-stream-button').addEventListener('click', handleCreateStreamClick);
+renderOutputLimitsGuide();
+document.getElementById('output-limits-edit').addEventListener('click', openOutputLimitsDialog);
+document.getElementById('output-limits-form').addEventListener('submit', applyOutputLimits);
+document.getElementById('output-limits-cancel').addEventListener('click', () => {
+    document.getElementById('output-limits-dialog').close();
+});
+document.getElementById('output-max-resolution').addEventListener('change', updateOutputLimitsForm);
+document.getElementById('output-max-bitrate').addEventListener('input', updateOutputLimitsForm);
 document.getElementById('left-team').addEventListener('input', refreshTeamHeadingsFromInputs);
 document.getElementById('right-team').addEventListener('input', refreshTeamHeadingsFromInputs);
 document.querySelectorAll('.penalty-add').forEach((button) => {

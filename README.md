@@ -133,7 +133,21 @@ If you use the optional Web UI `Create New Stream` flow, you can also set `youtu
   Each Scoring section also has a Summary drop-down (Off, or a period: `1st period`, `2nd period`, ..., `OT`, with the current one marked `(now)`), which shows that team's scoring in that period on the overlay, where the Caption setting puts it: a `<Team> 2nd period scoring:` line, then a line per goal like its caption without the `<Team> Goal:` (e.g. `MacTestface (Fakerson) PP`), or `No goals`. The current period is the current phase's (`Period 2`), or the period before an untimed phase such as a Flood. A period after the numbered phases (e.g. the OT phase) is `OT`: `<Team> OT scoring:`. One team's summary shows at a time, and a goal caption or `<Team> Goal!` replaces it while showing. It stays on, for the chosen period, until set to Off.
 - `goal_auto_show`: show each goal's caption automatically as soon as it appears on the scoresheet, for teams with Celebrate on. Goals already on the scoresheet when the app starts aren't shown. Default `true`; also the Auto-show checkbox in each team's Scoring section.
 - `goal_overlay_seconds`: how long a goal caption stays on screen once the goal has settled. Default `10`.
-- `teams`: settings by team name (as in `team_names`), usually just for your own team:
+- `teams`: a list of the game's two teams, each with these settings. `overlay_position` and `scoresheet` only need to be set for one team: the other team gets the other one. For example:
+
+  ```yaml
+  teams:
+    - name: Testers
+      overlay_position: left
+      scoresheet: home
+      roster:
+        17: MacTestface
+    - name: Fakes
+  ```
+
+  Mistakes (e.g. a team without a name, both teams on the same side, or a third team) are logged at startup and that part is ignored.
+  - `name`: the team's name, which the overlay starts with. It can be changed in the UI.
+  - `overlay_position`: `left` or `right`, where the team is on the overlay. Optional: without it, the list order decides, the first team on the left.
   - `roster`: jersey numbers and the text to show for each player, e.g. `17: MacTestface` (or a list of them, `- 17: MacTestface`). In captions for the team's goals, players are looked up by number and shown as just that text. Everyone else gets their scoresheet name, capitalised from all-caps (so `Testy Macdonald`). The text must include the player's scoresheet surname: unless `scoresheet` is set, a goal's players are matched on number and surname to tell which team on the scoresheet (home or away) is yours.
   - `scoresheet`: `home` or `away`, which team the scoresheet lists this team as. Optional: without it, the rosters work it out. Set it when the roster doesn't match the game's players, or the team has no roster. Once one team's side is known, the other side is the other overlay team. Goals only go in a team panel's Scoring section, and are only celebrated, once the team's side is known.
   - `celebrate`: whether the team's goals get captions automatically. Default `true` if the team has a roster, else `false`. It sets the starting value of the Celebrate checkbox under each team name, for the team names the app starts with. After that the checkboxes decide, and renaming a team doesn't change its checkbox. Goals are only celebrated once the rosters show which team scored them, so an opponent's goal isn't celebrated while both team names are still the same.

@@ -38,7 +38,6 @@ if os.path.exists(load_config_path):
 else:
     config = {}
 
-team_name_start_values = config.get('team_names', {})
 phase_configurations = [
     phase for phase in config.get('phases', [])
     if isinstance(phase, dict) and isinstance(phase.get('name'), str) and phase['name']
@@ -89,13 +88,15 @@ def next_phase_name():
 os.environ.setdefault('OAUTHLIB_INSECURE_TRANSPORT', '1')
 
 goal_teams = Teams(config.get('teams'))
+for warning in goal_teams.warnings:
+    print(f"Config teams: {warning}", flush=True)
 state = {
-    'left_team': team_name_start_values.get('left') or 'Left',
+    'left_team': goal_teams.overlay_name('left') or 'Left',
     'left_score': '0',
     'left_pp': False,
     'left_pp_time': '',
     'left_en': False,
-    'right_team': team_name_start_values.get('right') or 'Right',
+    'right_team': goal_teams.overlay_name('right') or 'Right',
     'right_score': '0',
     'right_pp': False,
     'right_pp_time': '',

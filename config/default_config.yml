@@ -2,10 +2,6 @@
 
 youtube_privacy_status: public
 
-team_names:
-  left: Centaurs
-  right: Bears
-
 toggle_buffer_ms: 400
 
 start_show_video: true
@@ -16,17 +12,20 @@ scoresheet_url: ''
 goal_auto_show: true
 goal_overlay_seconds: 10
 
-# Settings by the team name used in team_names.
-# teams:
-#   Testers:
-#     celebrate: true  # Starts the team's Celebrate checkbox checked. Default: true if it has a roster.
-#     scoresheet: home  # Optional: home or away on the scoresheet. Default: worked out from the roster.
-#     # The text shown for each jersey number in goal captions. It must
-#     # include the player's scoresheet surname: the roster also tells
-#     # which team on the scoresheet is yours.
-#     roster:
-#       17: MacTestface
-#       4: Fakerson
+# The game's two teams. overlay_position and scoresheet only need to be set
+# for one team: the other team gets the other one.
+teams:
+  - name: Centaurs  # The team name the overlay starts with.
+    overlay_position: left  # left or right. Default: list order, first team on the left.
+    # celebrate: true  # Starts the team's Celebrate checkbox checked. Default: true if it has a roster.
+    # scoresheet: home  # Optional: home or away on the scoresheet. Default: worked out from the roster.
+    # # The text shown for each jersey number in goal captions. It must
+    # # include the player's scoresheet surname: the roster also tells
+    # # which team on the scoresheet is yours.
+    # roster:
+    #   17: MacTestface
+    #   4: Fakerson
+  - name: Bears
 
 phases:
   - name: Warmup

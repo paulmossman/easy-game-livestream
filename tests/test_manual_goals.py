@@ -4,7 +4,7 @@ from src.goal_captions import Teams
 from src.scoresheets import Goal, Player, Strength
 from src.scoresheets.manual import GoalOverrides, ManualGoals, parse_clock, parse_player, player_text
 
-TEAMS = Teams({'Home Testers': {'roster': [{17: 'MacTestface'}, {4: 'Fakerson'}]}})
+TEAMS = Teams([{'name': 'Home Testers', 'roster': [{17: 'MacTestface'}, {4: 'Fakerson'}]}])
 
 
 def entry(**fields):

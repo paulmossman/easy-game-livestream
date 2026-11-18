@@ -1,14 +1,14 @@
-# easy-game-livestream
+# PuckScoreLive
 
-Layer game score, time, etc onto an RTMP livestream.
+Layer hockey game score, time, penalties, etc onto an RTMP livestream.
 
-At this point "easy" is a goal, not the reality. It should work on macOS, and maybe even Linux. But there's a bash script, which won't work seamlessly on Windows.
+Rough around the edges. It should work on macOS, and maybe even Linux. But there's a bash script, which won't work seamlessly on Windows.
 
 The `ops.yml` is for the [Crystal Ops (crops) tool](https://github.com/nickthecook/crops), which is very helpful but not required.
 
-## Demo
+## Demo (old)
 
-Demo of the console doing a simulated game livestream: https://www.youtube.com/watch?v=jjHv_qa3Pkk
+Demo of the console doing a simulated game livestream: https://www.youtube.com/watch?v=jjHv_qa3Pkk. It's very outdated.
 
 The YouTube livestream that the demo produced (with much audio muted): https://www.youtube.com/live/Agm8VVVv4U4
 
@@ -55,7 +55,7 @@ Use these steps only if you want to try the optional `Create New Stream` flow in
 5. From `APIs & Services`, got to `OAuth consent screen` and click `Get Started`.
 6. If prompted, choose the app type that fits your account. For personal testing, the flow is usually easiest with an `External` app in testing mode.
 7. Fill in the required consent screen fields:
-   - App name: something like `Easy Game Livestream`
+   - App name: something like `PuckScoreLive`
    - User support email: your email
    - Developer contact email: your email
 8. Save the consent screen settings.
@@ -63,7 +63,7 @@ Use these steps only if you want to try the optional `Create New Stream` flow in
 11. Go to `APIs & Services`, then `Credentials`.
 12. Click `Create Credentials`, then `OAuth client ID`.
 13. Choose `Web application`.
-14. Give the client a name, such as `Easy Game Livestream`.
+14. Give the client a name, such as `PuckScoreLive.
 15. Under `Authorized redirect URIs`, add this exact URL:
     - `http://localhost:5001/api/youtube/oauth/callback`
 16. Create the client.
@@ -85,7 +85,7 @@ PWM Create New Stream - each time
 - Your app is in test mode so you'll get a "Google hasn’t verified this app" warning. Click "Continue".
 PWM 1st:
 - The first time you try to create a new stream you'll be notified that your app wants to "wants access to your Google Account". Click "Select all" and click "Continue".
-   - Afterwards: "Easy Game Livestream already has some access ..." Click "Continue".
+   - Afterwards: "PuckScoreLive already has some access ..." Click "Continue".
 
 
 - A broadcast made by `Create New Stream` goes live when the stream arrives, but doesn't end when the stream stops, so the phone can reconnect or the app restart without ending it. End it with the `Stop Stream Page` link (`/youtube-stop`).

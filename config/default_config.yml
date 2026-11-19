@@ -16,7 +16,7 @@ goal_overlay_seconds: 10
 # for one team: the other team gets the other one.
 teams:
   - name: Centaurs  # The team name the overlay starts with.
-    # full_name: Testville Centaurs  # Optional: the name in the YouTube title. Default: name.
+    full_name: Ottawa Centaurs  # Optional: the name in the YouTube title. Default: name.
     overlay_position: left  # left or right. Default: list order, first team on the left.
     # celebrate: true  # Starts the team's Celebrate checkbox checked. Default: true if it has a roster.
     # scoresheet: home  # Optional: home or away on the scoresheet. Default: worked out from the roster.
@@ -27,6 +27,7 @@ teams:
     #   17: MacTestface
     #   4: Fakerson
   - name: Bears
+    full_name: Boston Bears
 
 phases:
   - name: Warmup

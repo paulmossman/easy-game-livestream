@@ -1375,7 +1375,7 @@ def create_youtube_broadcast_for_channel(channel_id, left_team=None, right_team=
         body={
             'snippet': {
                 'title': title,
-                'description': f'Created by easy-game-livestream for {selected_channel["title"]}',
+                'description': f'Created by PuckScoreLive for {selected_channel["title"]}',
             },
             'cdn': {
                 'frameRate': youtube_stream_frame_rate,

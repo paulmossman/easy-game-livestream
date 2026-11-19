@@ -1,26 +1,28 @@
 # PuckScoreLive
 
-Layer hockey game score, time, penalties, etc onto an RTMP livestream.
+A free (open-source) platform for layering hockey game score, time, penalties, etc onto an RTMP livestream to YouTube.
 
-Rough around the edges. It should work on macOS, and maybe even Linux. But there's a bash script, which won't work seamlessly on Windows.
-
-The `ops.yml` is for the [Crystal Ops (crops) tool](https://github.com/nickthecook/crops), which is very helpful but not required.
+Fairly stable, but a steep learing curve. It should work on macOS, and maybe even Linux. But there's a bash script, which won't work seamlessly on Windows.
 
 ## Demo (old)
 
-Demo of the console doing a simulated game livestream: https://www.youtube.com/watch?v=jjHv_qa3Pkk. It's very outdated.
+Demo of the console doing a simulated game livestream: https://www.youtube.com/watch?v=jjHv_qa3Pkk. It's very outdated. The YouTube livestream that the demo produced (with much audio muted): https://www.youtube.com/live/Agm8VVVv4U4
 
-The YouTube livestream that the demo produced (with much audio muted): https://www.youtube.com/live/Agm8VVVv4U4
+Actual 2026-27 season livestreams using this platform are on [this channel](https://www.youtube.com/channel/UCqLa68AAbE_eCs9IOX4Qddw).
+
+## Prerequisites
+
+1. [Crystal Ops (crops)](https://github.com/nickthecook/crops), which uses [`ops.yml`](./ops.yml).
+2. [Docker Desktop](https://docs.docker.com/desktop/)
 
 ## Setup
 
 1. Run `ops start` (or `./bin/start_with_lan_ips.sh`.)
 2. Open http://localhost:5001 for control interface.
 3. Configure PRISM Live Studio to stream to `rtmp://<Docker Host IP>:1935/live/` with stream key set to `egl`.
-
 4. Open a local preview of the overlaid stream at `http://<Docker-Host>:8889/live/preview/?muted=no` for lower-latency WebRTC playback with audio, or `http://<Docker-Host>:8888/live/preview_hls/index.m3u8` for HLS playback. WebRTC requires UDP port `8189` to be reachable, and also the app to be configured with the IP(s) at which it's reachable (via `MTX_WEBRTCADDITIONALHOSTS` env var.).
 
-## YouTube Studio Flow
+## YouTube Studio Flow - (stale?)
 
 Use this when you want the app to publish to YouTube with the configured stream key.
 
@@ -38,7 +40,7 @@ Use this when you want the app to publish to YouTube with the configured stream 
 
 This manual flow does not require a Google login inside the app. The app expects PRISM to publish to the fixed RTMP path `/live/egl`.
 
-## Optional Google Login Flow
+## Optional Google Login Flow - preferred
 
 The Web UI's `Create New Stream` feature is separate from the manual YouTube Studio flow above.
 
@@ -80,10 +82,10 @@ Use these steps only if you want to try the optional `Create New Stream` flow in
 
 ### Notes
 
-PWM Create New Stream - each time
+Create New Stream - each time
 - "Choose your account or a brand account" --> Your channel.
 - Your app is in test mode so you'll get a "Google hasn’t verified this app" warning. Click "Continue".
-PWM 1st:
+1st:
 - The first time you try to create a new stream you'll be notified that your app wants to "wants access to your Google Account". Click "Select all" and click "Continue".
    - Afterwards: "PuckScoreLive already has some access ..." Click "Continue".
 

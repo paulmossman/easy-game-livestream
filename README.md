@@ -19,8 +19,7 @@ Actual 2026-27 season livestreams using this platform are on [this channel](http
 
 1. Run `ops start` (or `./bin/start_with_lan_ips.sh`.)
 2. Open http://localhost:5001 for control interface.
-3. Configure PRISM Live Studio to stream to `rtmp://<Docker-Host>:1935/live/` with stream key set to `egl`.
-4. Open a local preview of the overlaid stream at `http://<Docker-Host>:8889/live/preview/?muted=no` for lower-latency WebRTC playback with audio, or `http://<Docker-Host>:8888/live/preview_hls/index.m3u8` for HLS playback. WebRTC requires UDP port `8189` to be reachable, and also the app to be configured with the IP(s) at which it's reachable (via `MTX_WEBRTCADDITIONALHOSTS` env var.).
+3. Configure PRISM Live Studio to stream to `rtmp://<Docker-Host>:1935`, and any non-blank stream key (e.g. `psl`).
 
 ## YouTube Studio Flow - (stale?)
 
@@ -34,11 +33,11 @@ Use this when you want the app to publish to YouTube with the configured stream 
 6. Set the visibility, audience, and any other YouTube options you care about.
 7. Leave that YouTube Live Control Room page open.
 8. Start the incoming stream from PRISM to this app.
-9. Check the local preview at `http://localhost:5001` or `http://localhost:8889/live/preview/?muted=no`.
+9. Check the local preview at `http://localhost:5001` or `http://localhost:8889/internal/puck-score-livestream/preview/?muted=no`.
 10. Wait for YouTube Studio to show that it is receiving the stream.
 11. In YouTube Studio, click `Go live` when you are ready for the broadcast to be public.
 
-This manual flow does not require a Google login inside the app. The app expects PRISM to publish to the fixed RTMP path `/live/egl`.
+This manual flow does not require a Google login inside the app. PRISM can publish to any RTMP path (see Setup).
 
 ## Optional Google Login Flow - preferred
 
@@ -170,3 +169,11 @@ If you use the optional Web UI `Create New Stream` flow, you can also set `youtu
   | `480p` | `4000k` | `400k` |
   | `720p` | `8000k` | `3000k` |
   | `1080p` | `14000k` | `5000k` |
+
+## Advanced
+
+### Direct previews
+
+Open a local preview of the overlaid stream at `http://<Docker-Host>:8889/internal/puck-score-livestream/preview/?muted=no` for lower-latency WebRTC playback with audio. This requires UDP port `8189` to be reachable, and also the app to be configured with the IP(s) at which it's reachable (via `MTX_WEBRTCADDITIONALHOSTS` env var.).
+
+Or `http://<Docker-Host>:8888/internal/puck-score-livestream/preview_hls/index.m3u8` for HLS playback. This mirrors what is sent to YouTube, including the delay.

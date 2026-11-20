@@ -24,11 +24,11 @@ function webrtcPreviewUrl() {
         autoplay: 'yes',
         playsinline: 'yes'
     });
-    return `${window.location.protocol}//${previewHost}:8889/live/preview/?${query.toString()}`;
+    return `${window.location.protocol}//${previewHost}:8889/internal/puck-score-livestream/preview/?${query.toString()}`;
 }
 
 function hlsPreviewUrl() {
-    return `${window.location.protocol}//${window.location.hostname}:8888/live/preview_hls/index.m3u8`;
+    return `${window.location.protocol}//${window.location.hostname}:8888/internal/puck-score-livestream/preview_hls/index.m3u8`;
 }
 
 function previewMode() {

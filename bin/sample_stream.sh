@@ -12,4 +12,4 @@ if [[ -z ${1:-} ]]; then
   exit 1
 fi
 
-exec ffmpeg -re -stream_loop -1 -i "$1" -c:v copy -c:a aac -b:a 128k -f flv rtmp://localhost:1935/live/egl
+exec ffmpeg -re -stream_loop -1 -i "$1" -c:v copy -c:a aac -b:a 128k -f flv rtmp://localhost:1935/psl

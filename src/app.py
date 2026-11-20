@@ -205,6 +205,9 @@ default_video_resolution = '1280x720'
 overlay_preview_background = '0x1b262d'
 mediamtx_api_url = config.get('mediamtx_api_url', 'http://mediamtx:9997/v3/paths/list')
 last_stream_ready_state = None
+# The MediaMTX path the incoming stream is published to, found by
+# find_incoming_stream_path(); None when nothing is publishing.
+incoming_stream_path = None
 audio_control_target = 'volume@audio_gain'
 # A goal for a team with Celebrate on plays this file into the program audio.
 # It's looked for at each goal, so it can be added or changed at any time.
@@ -1135,7 +1138,8 @@ def tick_game_clock():
         socketio.emit('state_updated', current_state_payload())
 
 def current_input_url():
-    return 'rtmp://mediamtx/live/egl'
+    # None when nothing is publishing.
+    return f'rtmp://mediamtx/{incoming_stream_path}' if incoming_stream_path else None
 
 def build_rtmp_url(base_url, stream_key):
     if not stream_key:
@@ -1147,12 +1151,12 @@ def build_rtmp_url(base_url, stream_key):
 def current_program_output_url():
     # The overlaid program feed: what the relay sends to YouTube, also served
     # as the HLS preview. preview_* and output_* are older names for the keys.
-    output_base = config.get('program_output_url') or config.get('preview_output_url') or config.get('output_url') or 'rtmp://mediamtx/live/'
+    output_base = config.get('program_output_url') or config.get('preview_output_url') or config.get('output_url') or 'rtmp://mediamtx/internal/puck-score-livestream/'
     output_key = config.get('program_stream_key') or config.get('preview_stream_key') or config.get('output_stream_key') or 'preview_hls'
     return build_rtmp_url(output_base, output_key)
 
 def current_webrtc_preview_output_url():
-    output_base = config.get('webrtc_preview_output_url') or 'rtsp://mediamtx:8554/live/'
+    output_base = config.get('webrtc_preview_output_url') or 'rtsp://mediamtx:8554/internal/puck-score-livestream/'
     output_key = config.get('webrtc_preview_stream_key') or 'preview'
     return build_rtmp_url(output_base, output_key)
 
@@ -1538,11 +1542,14 @@ def stop_active_youtube_broadcast():
     return dict(runtime_youtube_destination)
 
 def measure_input_audio_level():
+    input_url = current_input_url()
+    if not input_url:
+        return None
     cmd = [
         'ffmpeg',
         '-nostats',
         '-t', '2',
-        '-i', current_input_url(),
+        '-i', input_url,
         '-af', 'volumedetect',
         '-vn',
         '-sn',
@@ -1580,7 +1587,7 @@ def audio_level_status(audio_db):
 def monitor_input_audio():
     last_snapshot = (None, None, None)
     while True:
-        ready = is_stream_ready()
+        ready = incoming_stream_path is not None
         audio_db = measure_input_audio_level() if ready else None
         label, is_active = audio_level_status(audio_db)
         snapshot = (audio_db, label, is_active)
@@ -1592,9 +1599,6 @@ def monitor_input_audio():
             socketio.emit('state_updated', current_state_payload())
             last_snapshot = snapshot
         time.sleep(incoming_audio_monitor_interval_seconds)
-
-def current_stream_path():
-    return stream_path_from_url(current_input_url())
 
 def stream_path_from_url(url):
     parsed = urllib.parse.urlparse(url)
@@ -1643,8 +1647,45 @@ def mediamtx_ready_source_id(stream_path):
             return (item.get('source') or {}).get('id') or ''
     return None
 
-def is_stream_ready():
-    return mediamtx_path_ready(current_stream_path())
+def app_output_paths():
+    # The MediaMTX paths the overlay FFmpeg publishes to, which aren't the
+    # incoming stream.
+    return {
+        stream_path_from_url(url)
+        for url in (current_program_output_url(), current_webrtc_preview_output_url())
+    }
+
+def find_incoming_stream_path():
+    # The incoming stream can be published to any MediaMTX path (MediaMTX
+    # itself refuses an empty one), so it's whichever ready path isn't one
+    # of the app's own outputs. With more than one, the one already in use
+    # stays; otherwise the first to start publishing. Sets and returns
+    # incoming_stream_path.
+    global incoming_stream_path
+    try:
+        with urllib.request.urlopen(mediamtx_api_url, timeout=2) as response:
+            items = json.load(response).get('items') or []
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as e:
+        if incoming_stream_path is not None:
+            print(f"MediaMTX API unavailable: {e}", flush=True)
+        items = []
+    own_paths = app_output_paths()
+    ready = {
+        item['name']: item for item in items
+        if item and item.get('ready') and item.get('name') and item['name'] not in own_paths
+    }
+    if incoming_stream_path in ready:
+        path = incoming_stream_path
+    elif ready:
+        path = min(ready, key=lambda name: ready[name].get('readyTime') or '')
+    else:
+        path = None
+    if path != incoming_stream_path:
+        print(f"Incoming stream path: {path}", flush=True)
+        if len(ready) > 1:
+            print(f"Ignoring other incoming stream paths: {', '.join(sorted(set(ready) - {path}))}", flush=True)
+        incoming_stream_path = path
+    return path
 
 def start_relay_ffmpeg():
     global relay_ffmpeg_process, relay_metrics_session_id
@@ -1767,6 +1808,10 @@ def run_ffmpeg(probe=True):
     # only the YouTube output limits changed, which saves ~2 s of ffprobe.
     global ffmpeg_process, ffmpeg_ready, sent_celebrate_y
     input_url = current_input_url()
+    if not input_url:
+        # The stream went away (e.g. just before an output-limits restart);
+        # monitor_stream starts FFmpeg again when one appears.
+        return
     program_output_url = current_program_output_url()
     webrtc_output_url = current_webrtc_preview_output_url()
     
@@ -1856,8 +1901,9 @@ def run_ffmpeg(probe=True):
 
 def monitor_stream():
     last_ready = None
+    ffmpeg_input_path = None
     while True:
-        ready = is_stream_ready()
+        ready = find_incoming_stream_path() is not None
         if ready != last_ready:
             with state_lock:
                 state['incoming_stream_ready'] = ready
@@ -1865,8 +1911,12 @@ def monitor_stream():
             last_ready = ready
         with process_lock:
             running = is_ffmpeg_running()
+            if ready and running and incoming_stream_path != ffmpeg_input_path:
+                print("Incoming stream moved to another path; restarting FFmpeg", flush=True)
+                running = False
             if ready and not running:
                 print("MediaMTX stream is ready; starting FFmpeg", flush=True)
+                ffmpeg_input_path = incoming_stream_path
                 run_ffmpeg()
             elif not ready and running:
                 print("MediaMTX stream is not ready; stopping FFmpeg", flush=True)

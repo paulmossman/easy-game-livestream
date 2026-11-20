@@ -1367,7 +1367,7 @@ def create_youtube_broadcast_for_channel(channel_id, left_team=None, right_team=
     latency = config.get('youtube_latency_preference', 'ultraLow')
     privacy = config.get('youtube_privacy_status', 'public')
     scoresheet_url = scoresheet_page_url()
-    description = 'Powered by: https://github.com/paulmossman/puck-score-live/blob/main/README.md'
+    description = 'Powered by: https://github.com/paulmossman/puck-score-live#puckscorelive'
     if scoresheet_url:
         description = f'Scoresheet: {scoresheet_url}\n\n{description}'
 

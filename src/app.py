@@ -262,7 +262,7 @@ runtime_youtube_destination = {
 }
 # No 1440p or 2160p: the broadcast's ultraLow latency preference doesn't
 # support them.
-youtube_resolutions = ('240p', '360p', '480p', '720p', '1080p')
+youtube_resolutions = ('144p', '240p', '360p', '480p', '720p', '1080p')
 
 default_youtube_max_height = 1080
 
@@ -279,6 +279,43 @@ def parse_youtube_max_bitrate_kbps(value):
         return None
     kbps = round(float(match.group(1)) * {'': 0.001, 'k': 1, 'K': 1, 'M': 1000}[match.group(2)])
     return kbps if kbps > 0 else None
+
+# docs/bitrate-table.md is the one copy of the minimum and recommended
+# bitrate for each resolution; the output limits dialog shows it. The
+# Dockerfile copies it to docs/ beside app.py; run from the repo, it's one
+# directory up.
+bitrate_guide_file = os.path.join('docs', 'bitrate-table.md')
+bitrate_guide_row = re.compile(r'^\s*\|\s*`([0-9]+p)`\s*\|\s*`([^`]+)`\s*\|\s*`([^`]+)`\s*\|\s*$')
+
+def load_bitrate_guide():
+    # [{'resolution': '720p', 'recommended': 8000, 'minimum': 3000}] in kbps,
+    # in the file's order, or [] if the file can't be read.
+    here = os.path.dirname(os.path.abspath(__file__))
+    for path in (os.path.join(here, bitrate_guide_file), os.path.join(here, '..', bitrate_guide_file)):
+        try:
+            with open(path, encoding='utf-8') as guide_file:
+                lines = guide_file.read().splitlines()
+            break
+        except OSError:
+            continue
+    else:
+        print(f"{bitrate_guide_file} not found; the output limits dialog has no bitrate guide", flush=True)
+        return []
+    guide = []
+    for line in lines:
+        match = bitrate_guide_row.match(line)
+        if not match:
+            continue
+        resolution, recommended, minimum = match.groups()
+        recommended_kbps = parse_youtube_max_bitrate_kbps(recommended)
+        minimum_kbps = parse_youtube_max_bitrate_kbps(minimum)
+        if resolution in youtube_resolutions and recommended_kbps and minimum_kbps:
+            guide.append({'resolution': resolution, 'recommended': recommended_kbps, 'minimum': minimum_kbps})
+    if not guide:
+        print(f"No bitrate table found in {path}", flush=True)
+    return guide
+
+bitrate_guide = load_bitrate_guide()
 
 def configured_youtube_max_height():
     value = config.get('youtube_max_resolution')
@@ -2329,6 +2366,7 @@ def index():
         'index.html',
         webrtc_additional_hosts=os.getenv('MTX_WEBRTCADDITIONALHOSTS', ''),
         toggle_buffer_ms=toggle_buffer_ms,
+        bitrate_guide=bitrate_guide,
         start_show_video=start_show_video,
         scoresheet_url=scoresheet_embed_url(),
         scoresheet_enabled=bool(scoresheet_source()),

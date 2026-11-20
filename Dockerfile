@@ -14,6 +14,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy source
 COPY src/ .
+# The output limits dialog's bitrate guide is read from this.
+COPY docs/bitrate-table.md docs/
 
 # Expose port
 EXPOSE 5000

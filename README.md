@@ -155,20 +155,16 @@ If you use the optional Web UI `Create New Stream` flow, you can also set `youtu
   - `celebrate`: whether the team's goals get captions automatically. Default `true` if the team has a roster, else `false`. It sets the starting value of the Celebrate checkbox under each team name, for the team names the app starts with. After that the checkboxes decide, and renaming a team doesn't change its checkbox. Goals are only celebrated once the rosters show which team scored them, so an opponent's goal isn't celebrated while both team names are still the same.
 - `celebrate_position`: the starting value of the Caption drop-down, which sets where the "<Team name> Goal!" text and the goal caption (which replaces it) are shown: `top` (just under the top row), `middle`, or `bottom` (just over the bottom row). Default `top`.
 - `celebrate_volume`: the starting value of the Celebrate volume % box beside the Caption drop-down, which sets how loud `config/celebrate.m4a` plays, as a percent of the file's own volume (0 to 1000), to match it to the game audio. A change applies from the next goal. Default `100`.
-- `youtube_max_bitrate`: the most video bitrate the stream sent to YouTube may use, e.g. `3000k` or `2.5M`. See the table under `youtube_max_resolution` for what suits each resolution; on a slow upload, use about two thirds of a measured speed test. Unset by default, which leaves the bitrate uncapped. A bare number is bits per second, so `5000` is 5 kbps: include the `k` or `M`.
-- `youtube_max_resolution`: the highest resolution sent to YouTube, from the table below. The stream matches the incoming resolution unless that is higher, in which case it's scaled down, keeping its aspect ratio. Any other value is ignored. The local WebRTC preview isn't scaled. Default `1080p`. 1440p and 2160p aren't allowed, because the app creates YouTube broadcasts with the `ultraLow` latency preference, which doesn't support them.
+- `youtube_max_bitrate`: the most video bitrate the stream sent to YouTube may use, e.g. `3000k` or `2.5M`. See the [bitrate table](docs/bitrate-table.md) for what suits each resolution; on a slow upload, use about two thirds of a measured speed test. Unset by default, which leaves the bitrate uncapped. A bare number is bits per second, so `5000` is 5 kbps: include the `k` or `M`.
+- `youtube_max_resolution`: the highest resolution sent to YouTube, from the [bitrate table](docs/bitrate-table.md). The stream matches the incoming resolution unless that is higher, in which case it's scaled down, keeping its aspect ratio. Any other value is ignored. The local WebRTC preview isn't scaled. Default `1080p`. (1440p and 2160p aren't allowed, because the app creates YouTube broadcasts with the `ultraLow` latency preference, which doesn't support them.)
 
-  Both are starting values: the YouTube panel shows the current limits under its Quality table, and the Settings button beside them opens a dialog that changes them while the app runs (until it restarts; the config file isn't changed). The dialog also lists YouTube's minimum and recommended bitrate for each resolution. Applying a change while streaming restarts the encoder, so the YouTube stream and the preview drop out for about 5 seconds. YouTube picks up a new resolution on its own, but only after a while; until then its player keeps offering the old quality options, with the new picture scaled to fit. `Create New Stream` switches at once, but gives the stream a new link.
+Both are maximum values: the YouTube panel shows the current limits under its Quality table, and the Settings button beside them opens a dialog that changes them while the app runs (until it restarts; the config file isn't changed). The dialog also lists the minimum and recommended bitrate for each resolution. Applying a change while streaming restarts the encoder, so the YouTube stream and the preview drop out for about 5 seconds. YouTube picks up a new resolution on its own, but only after a while; until then its player keeps offering the old quality options, with the new picture scaled to fit. `Create New Stream` switches at once, but gives the stream a new link.
 
-  When you change it, change `youtube_max_bitrate` to match, because that isn't adjusted for you. Too low a bitrate for the resolution looks blocky, especially with fast motion. Values are [YouTube's H.264 figures](https://support.google.com/youtube/answer/2853702) for 30 fps:
+When you change it, change `youtube_max_bitrate` to match, because that isn't adjusted for you. Too low a bitrate for the resolution looks blocky, especially with fast motion.
 
-  | Resolution | Recommended Bitrate | Minimum Bitrate |
-  | --- | --- | --- |
-  | `240p` | `400k` | `300k` |
-  | `360p` | `4000k` | `400k` |
-  | `480p` | `4000k` | `400k` |
-  | `720p` | `8000k` | `3000k` |
-  | `1080p` | `14000k` | `5000k` |
+The app's output limits dialog shows the [bitrate table](docs/bitrate-table.md): it reads that file at startup. Keep each row in the same form, with the values in backticks, or the dialog skips it.
+
+YouTube's recommendations: https://support.google.com/youtube/answer/2853702 (see H.264.)
 
 ## Advanced
 

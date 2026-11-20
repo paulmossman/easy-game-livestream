@@ -1317,14 +1317,9 @@ async function postScoresheet(url, data) {
     }
 }
 
-// YouTube's H.264 figures for 30 fps, in kbps (as in the README).
-const youtubeBitrateGuide = {
-    '240p': { recommended: 400, minimum: 300 },
-    '360p': { recommended: 4000, minimum: 400 },
-    '480p': { recommended: 4000, minimum: 400 },
-    '720p': { recommended: 8000, minimum: 3000 },
-    '1080p': { recommended: 14000, minimum: 5000 },
-};
+// [{resolution, recommended, minimum}] in kbps, from docs/bitrate-table.md
+// (see load_bitrate_guide in app.py).
+const bitrateGuide = JSON.parse(document.body.dataset.bitrateGuide || '[]');
 let outputLimits = null;
 let outputEncoderRunning = false;
 
@@ -1360,7 +1355,7 @@ function renderOutputLimits(limits) {
 
 function renderOutputLimitsGuide() {
     document.getElementById('output-limits-guide-body').replaceChildren(
-        ...Object.entries(youtubeBitrateGuide).map(([resolution, guide]) => {
+        ...bitrateGuide.map(({ resolution, ...guide }) => {
             const row = document.createElement('tr');
             row.dataset.resolution = resolution;
             const label = document.createElement('th');
@@ -1400,14 +1395,14 @@ function readOutputLimitsForm() {
 function updateOutputLimitsForm() {
     const form = readOutputLimitsForm();
     const hint = document.getElementById('output-limits-hint');
-    const guide = youtubeBitrateGuide[form.resolution];
+    const guide = bitrateGuide.find((row) => row.resolution === form.resolution);
     // The guide table shows the figures; this only warns.
     let warning = false;
     if (!form.valid) {
         hint.textContent = 'Enter the bitrate as a whole number of kbps, or leave it empty for no cap.';
         warning = true;
     } else if (guide && form.bitrate_kbps !== null && form.bitrate_kbps < guide.minimum) {
-        hint.textContent = `Below YouTube's ${guide.minimum} kbps minimum for ${form.resolution}, the picture will look blocky; try a lower resolution.`;
+        hint.textContent = `Below the ${guide.minimum} kbps minimum for ${form.resolution}, the picture will look blocky; try a lower resolution.`;
         warning = true;
     } else {
         hint.textContent = 'Leave the bitrate empty for no cap.';

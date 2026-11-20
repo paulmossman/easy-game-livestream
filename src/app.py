@@ -26,6 +26,7 @@ from googleapiclient.errors import HttpError
 from penalties import PenaltyStateMachine, PenaltyType, Team
 from scoresheets import GoalOverrides, GameNotStarted, GoalChangeKind, ManualGoals, ScoresheetError, is_mock_game, open_feed, player_text
 from goal_captions import Teams
+from upload_speed_test import AlreadyRunning, UnknownServer, UploadSpeedTest
 
 # Load config
 config_filename = os.getenv('APP_CONFIG_FILE') or 'config.yml'
@@ -2637,6 +2638,41 @@ def youtube_stop_stream():
         return jsonify({'error': str(e)}), 500
 
     return jsonify(stopped)
+
+upload_speed_test = UploadSpeedTest()
+
+def speedtest_payload():
+    payload = upload_speed_test.status()
+    payload['relay_running'] = is_relay_ffmpeg_running()
+    return payload
+
+@app.route('/api/speedtest', methods=['GET'])
+def speedtest_status():
+    return jsonify(speedtest_payload())
+
+@app.route('/api/speedtest/servers', methods=['GET'])
+def speedtest_servers():
+    # ?search=<city or provider>; without it, the nearest servers.
+    search = (request.args.get('search') or '').strip() or None
+    try:
+        servers = upload_speed_test.servers(search=search)
+    except Exception as e:
+        return jsonify({'error': f'Could not get the speedtest.net server list: {e}'}), 502
+    return jsonify({'servers': servers})
+
+@app.route('/api/speedtest', methods=['POST'])
+def speedtest_start():
+    # {"server_id": "<id from /api/speedtest/servers>"}, or no server_id for
+    # the automatic choice.
+    data = request.get_json(silent=True) or {}
+    server_id = str(data.get('server_id') or '').strip() or None
+    try:
+        upload_speed_test.start(server_id)
+    except UnknownServer:
+        return jsonify({'error': 'Unknown server: search for it again'}), 400
+    except AlreadyRunning:
+        return jsonify({'error': 'A speed test is already running'}), 409
+    return jsonify(speedtest_payload()), 202
 
 @app.route('/api/stream/output-limits', methods=['POST'])
 def update_stream_output_limits():

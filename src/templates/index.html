@@ -505,6 +505,60 @@
             border: 1px solid var(--line);
         }
 
+        .speedtest {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .speedtest-result {
+            margin: 0;
+            font-weight: 700;
+            min-width: 0;
+            overflow-wrap: anywhere;
+        }
+
+        .speedtest-result:empty {
+            display: none;
+        }
+
+        .speedtest-server {
+            display: grid;
+            gap: 8px;
+        }
+
+        .speedtest-server-list {
+            margin: 0;
+            padding: 4px;
+            list-style: none;
+            max-height: 240px;
+            overflow-y: auto;
+            border: 1px solid var(--line);
+            border-radius: 10px;
+            background: white;
+        }
+
+        .speedtest-server-list li {
+            padding: 8px 10px;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+
+        .speedtest-server-list li.is-active {
+            color: white;
+            background: var(--steel-b);
+        }
+
+        .speedtest-server-list li[aria-selected="true"] {
+            font-weight: 800;
+        }
+
+        .speedtest-server-list li.is-note {
+            cursor: default;
+            color: rgba(31, 26, 23, 0.6);
+        }
+
         .youtube-link {
             color: var(--steel-b);
             font-weight: 800;
@@ -1565,6 +1619,10 @@
                         <a class="youtube-link" href="/youtube-stop">Stop Stream Page</a>
                     </div>
                     <div id="youtube-channel-list" class="channel-list"></div>
+                    <div class="speedtest">
+                        <button type="button" id="speedtest-button" class="advanced-button">Upload Speed Test</button>
+                        <div id="speedtest-result" class="speedtest-result" aria-live="polite"></div>
+                    </div>
                 </section>
             </div>
 
@@ -1741,6 +1799,32 @@
                 <div class="goal-entry-actions">
                     <button type="submit" id="output-limits-ok" class="advanced-button goal-entry-save">OK</button>
                     <button type="button" id="output-limits-cancel" class="advanced-button">Cancel</button>
+                </div>
+            </form>
+        </dialog>
+        <dialog id="speedtest-dialog" class="preview-settings-dialog" aria-labelledby="speedtest-title">
+            <form id="speedtest-form" class="goal-entry-form" method="dialog">
+                <div class="preview-dialog-header">
+                    <h2 id="speedtest-title">Upload speed test</h2>
+                </div>
+                <p class="output-limits-warning">
+                    This test uploads to a speedtest.net server as fast as the connection allows, for about 10 seconds.<br><br>
+                    Don't run it while live streaming to YouTube if bandwidth is limited: The stream and the test would share the upload bandwidth, so the stream would suffer and the test would be inaccurate.
+                </p>
+                <p id="speedtest-live-warning" class="output-limits-warning is-streaming" hidden>
+                    A YouTube stream is live right now.
+                </p>
+                <div class="speedtest-server">
+                    <label for="speedtest-server-input">Server</label>
+                    <input id="speedtest-server-input" type="text" role="combobox" autocomplete="off" spellcheck="false"
+                        aria-autocomplete="list" aria-expanded="false" aria-controls="speedtest-server-list"
+                        placeholder="Search by city or provider">
+                    <ul id="speedtest-server-list" class="speedtest-server-list" role="listbox" aria-label="speedtest.net servers" hidden></ul>
+                </div>
+                <p id="speedtest-dialog-result" class="speedtest-result" aria-live="polite"></p>
+                <div class="goal-entry-actions">
+                    <button type="submit" id="speedtest-run" class="advanced-button goal-entry-save" autofocus>Run Test</button>
+                    <button type="button" id="speedtest-close" class="advanced-button">Close</button>
                 </div>
             </form>
         </dialog>

@@ -685,6 +685,192 @@ async function createYouTubeStream(channelId) {
     renderYouTubeActions(data, true);
     await loadYouTubeStatus();
 }
+const speedTestPollIntervalMs = 1000;
+const speedTestSearchDelayMs = 400;
+let speedTestPolling = false;
+let speedTestSearchTimer = null;
+let speedTestServerRequest = 0;
+const speedTestAutoServer = { id: '', label: 'Automatic: lowest ping of the nearest 5' };
+let speedTestSelectedServer = speedTestAutoServer;
+let speedTestServerOptions = [];
+let speedTestActiveIndex = -1;
+
+function speedTestResultText(data) {
+    if (data.running) {
+        return 'Testing upload speed (about 10 seconds)...';
+    }
+    if (data.error) {
+        return data.error;
+    }
+    if (typeof data.upload_mbps === 'number') {
+        const server = data.server ? ` (${data.server})` : '';
+        return `Upload: ${data.upload_mbps} Mbps, ping ${data.ping_ms} ms${server}`;
+    }
+    return '';
+}
+
+function renderUploadSpeedTest(data) {
+    const text = speedTestResultText(data);
+    const when = !data.running && data.finished_at ? `Tested at ${new Date(data.finished_at).toLocaleTimeString()}` : '';
+    ['speedtest-result', 'speedtest-dialog-result'].forEach((id) => {
+        const result = document.getElementById(id);
+        result.textContent = text;
+        result.title = when;
+    });
+    document.getElementById('speedtest-run').disabled = Boolean(data.running);
+    document.getElementById('speedtest-live-warning').hidden = !data.relay_running;
+}
+
+async function pollUploadSpeedTest() {
+    if (speedTestPolling) {
+        return;
+    }
+    speedTestPolling = true;
+    try {
+        while (true) {
+            const data = await (await fetch('/api/speedtest')).json();
+            renderUploadSpeedTest(data);
+            if (!data.running) {
+                break;
+            }
+            await new Promise((resolve) => window.setTimeout(resolve, speedTestPollIntervalMs));
+        }
+    } catch (error) {
+        renderUploadSpeedTest({ error: 'Could not get the speed test result.' });
+    } finally {
+        speedTestPolling = false;
+    }
+}
+
+function speedTestServerOptionText(server) {
+    return typeof server.distance_km === 'number' ? `${server.label} (${server.distance_km} km)` : server.label;
+}
+
+function renderSpeedTestServerList(note) {
+    const list = document.getElementById('speedtest-server-list');
+    list.innerHTML = '';
+    speedTestServerOptions.forEach((server, index) => {
+        const item = document.createElement('li');
+        item.id = `speedtest-server-option-${index}`;
+        item.setAttribute('role', 'option');
+        item.textContent = speedTestServerOptionText(server);
+        item.setAttribute('aria-selected', String(server.id === speedTestSelectedServer.id));
+        item.classList.toggle('is-active', index === speedTestActiveIndex);
+        // mousedown, not click: picks before the input's blur closes the list.
+        item.addEventListener('mousedown', (event) => {
+            event.preventDefault();
+            chooseSpeedTestServer(server);
+        });
+        list.appendChild(item);
+    });
+    if (note) {
+        const item = document.createElement('li');
+        item.className = 'is-note';
+        item.textContent = note;
+        list.appendChild(item);
+    }
+    const input = document.getElementById('speedtest-server-input');
+    if (speedTestActiveIndex >= 0) {
+        input.setAttribute('aria-activedescendant', `speedtest-server-option-${speedTestActiveIndex}`);
+        document.getElementById(`speedtest-server-option-${speedTestActiveIndex}`).scrollIntoView({ block: 'nearest' });
+    } else {
+        input.removeAttribute('aria-activedescendant');
+    }
+}
+
+function setSpeedTestServerListOpen(open) {
+    document.getElementById('speedtest-server-list').hidden = !open;
+    document.getElementById('speedtest-server-input').setAttribute('aria-expanded', String(open));
+}
+
+function chooseSpeedTestServer(server) {
+    speedTestSelectedServer = server;
+    window.clearTimeout(speedTestSearchTimer);
+    document.getElementById('speedtest-server-input').value = server.label;
+    setSpeedTestServerListOpen(false);
+}
+
+async function loadSpeedTestServers(search) {
+    const requestNumber = ++speedTestServerRequest;
+    const query = search ? `?search=${encodeURIComponent(search)}` : '';
+    let servers = [];
+    let note = '';
+    try {
+        const response = await fetch(`/api/speedtest/servers${query}`);
+        const data = await response.json();
+        servers = data.servers || [];
+        note = response.ok ? '' : (data.error || 'Could not get the server list.');
+    } catch (requestError) {
+        note = 'Could not get the server list.';
+    }
+    if (requestNumber !== speedTestServerRequest) {
+        return; // A newer search has started.
+    }
+    if (!note && search && servers.length === 0) {
+        note = 'No servers match the search';
+    }
+    // Automatic is always offered first; while searching, the best match
+    // is highlighted so Enter picks it.
+    speedTestServerOptions = [speedTestAutoServer, ...servers];
+    speedTestActiveIndex = search && servers.length > 0 ? 1 : -1;
+    renderSpeedTestServerList(note);
+}
+
+function handleSpeedTestServerKeydown(event) {
+    const list = document.getElementById('speedtest-server-list');
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        if (list.hidden) {
+            setSpeedTestServerListOpen(true);
+        }
+        const count = speedTestServerOptions.length;
+        if (count > 0) {
+            const step = event.key === 'ArrowDown' ? 1 : -1;
+            speedTestActiveIndex = speedTestActiveIndex < 0
+                ? (step > 0 ? 0 : count - 1)
+                : (speedTestActiveIndex + step + count) % count;
+            renderSpeedTestServerList();
+        }
+    } else if (event.key === 'Enter') {
+        // Enter picks from the list rather than submitting the form and
+        // starting a test.
+        event.preventDefault();
+        if (!list.hidden && speedTestActiveIndex >= 0) {
+            chooseSpeedTestServer(speedTestServerOptions[speedTestActiveIndex]);
+        }
+    } else if (event.key === 'Escape' && !list.hidden) {
+        // Close the list, not the dialog.
+        event.preventDefault();
+        event.stopPropagation();
+        chooseSpeedTestServer(speedTestSelectedServer);
+    }
+}
+
+function openUploadSpeedTestDialog() {
+    speedTestServerOptions = [speedTestAutoServer];
+    speedTestActiveIndex = -1;
+    chooseSpeedTestServer(speedTestAutoServer);
+    document.getElementById('speedtest-dialog').showModal();
+    pollUploadSpeedTest();
+    loadSpeedTestServers('');
+}
+
+async function startUploadSpeedTest(event) {
+    event.preventDefault();
+    const serverId = speedTestSelectedServer.id;
+    const response = await fetch('/api/speedtest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(serverId ? { server_id: serverId } : {}),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok && response.status !== 409) {
+        renderUploadSpeedTest({ error: data.error || 'Could not start the speed test.' });
+        return;
+    }
+    await pollUploadSpeedTest();
+}
+
 function meterWidthFromDb(audioDb) {
     if (typeof audioDb !== 'number' || Number.isNaN(audioDb)) {
         return 0;
@@ -1689,6 +1875,27 @@ document.getElementById('message-text').addEventListener('blur', submitOverlayUp
 });
 document.getElementById('mute-toggle-button').addEventListener('click', toggleMute);
 document.getElementById('create-stream-button').addEventListener('click', handleCreateStreamClick);
+document.getElementById('speedtest-button').addEventListener('click', openUploadSpeedTestDialog);
+document.getElementById('speedtest-form').addEventListener('submit', startUploadSpeedTest);
+document.getElementById('speedtest-close').addEventListener('click', () => {
+    document.getElementById('speedtest-dialog').close();
+});
+const speedTestServerInput = document.getElementById('speedtest-server-input');
+speedTestServerInput.addEventListener('focus', () => {
+    speedTestServerInput.select();
+    setSpeedTestServerListOpen(true);
+    renderSpeedTestServerList();
+});
+speedTestServerInput.addEventListener('blur', () => chooseSpeedTestServer(speedTestSelectedServer));
+speedTestServerInput.addEventListener('input', () => {
+    setSpeedTestServerListOpen(true);
+    window.clearTimeout(speedTestSearchTimer);
+    const search = speedTestServerInput.value.trim();
+    speedTestSearchTimer = window.setTimeout(() => loadSpeedTestServers(search), speedTestSearchDelayMs);
+});
+speedTestServerInput.addEventListener('keydown', handleSpeedTestServerKeydown);
+// Picks up a test already running (e.g. started from another tab).
+pollUploadSpeedTest();
 renderOutputLimitsGuide();
 document.getElementById('output-limits-edit').addEventListener('click', openOutputLimitsDialog);
 document.getElementById('output-limits-form').addEventListener('submit', applyOutputLimits);
